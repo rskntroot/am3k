@@ -47,11 +47,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let input_path = PathBuf::from(&args[1]);
     let content = fs::read_to_string(input_path)?;
-    let configuration: acl::RulesetConfig = serde_yml::from_str(&content)?;
-
-    let validated_generics: Vec<Rule> = extrapolate_generics(&configuration.ruleset.generic);
+    let configuration: acl::RulesetConfig = match serde_yml::from_str(&content) {
+        Ok(ruleset) => ruleset,
+        Err(e) => panic!("Error deserializing YAML: {}", e),
+    };
 
     println!("{:#?}", configuration);
+
+    let validated_generics: Vec<Rule> = extrapolate_generics(&configuration.ruleset.generic);
     println!("{:#?}", validated_generics);
 
     Ok(())

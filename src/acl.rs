@@ -54,11 +54,10 @@ pub struct Transforms {
     pub dst: bool,
 }
 
-// test struct is constructable
 #[test]
 fn test_acl_config() {
     let test_data = r#"
-ruleset: 
+ruleset:
   generic:
     - allow icmp outside any inside 8
     - deny tcp outside any inside 22
@@ -83,7 +82,7 @@ ruleset:
       interfaces:
         - ae20
       filters:
-        src: 
+        src:
           - "example"
         dst:
           - "example"
@@ -99,8 +98,6 @@ ruleset:
 
     let _configuration: Ruleset = match result {
         Ok(ruleset) => ruleset,
-        Err(_) => {
-            panic!("Error deserializing YAML");
-        }
+        Err(e) => panic!("Error deserializing YAML: {}", e),
     };
 }
