@@ -1,6 +1,9 @@
 #[allow(dead_code)]
 mod acl;
 
+#[allow(dead_code)]
+mod junos;
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -39,25 +42,36 @@ struct Rule {
     dst_port: PortVariant,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         panic!("Usage: {} <input_yaml>", args[0]);
     }
 
-    let input_path = PathBuf::from(&args[1]);
-    let content = fs::read_to_string(input_path)?;
+    let content = match fs::read_to_string(PathBuf::from(&args[1])) {
+        Ok(str) => str,
+        Err(e) => panic!("{}", e),
+    };
     let configuration: acl::RulesetConfig = match serde_yml::from_str(&content) {
         Ok(ruleset) => ruleset,
         Err(e) => panic!("Error deserializing YAML: {}", e),
     };
-
-    println!("{:#?}", configuration);
+    // println!("{:#?}", configuration);
 
     let validated_generics: Vec<Rule> = extrapolate_generics(&configuration.ruleset.generic);
     println!("{:#?}", validated_generics);
 
-    Ok(())
+    println!("\nChecking interfaces assignments for ingress...");
+    match check_ifaces_are_valid(&configuration.ruleset.deployment.ingress.interfaces) {
+        Ok(_) => println!("Valid interface assignments for ingress."),
+        Err(e) => panic!("{}", e),
+    }
+
+    println!("\nChecking interfaces assignments for egress...");
+    match check_ifaces_are_valid(&configuration.ruleset.deployment.egress.interfaces) {
+        Ok(_) => println!("Valid port assignments for egress."),
+        Err(e) => panic!("{}", e),
+    }
 }
 
 fn extrapolate_generics(generics: &Vec<String>) -> Vec<Rule> {
@@ -121,4 +135,19 @@ fn parse_portvariant(port: &str) -> Result<PortVariant, String> {
             }
         }
     }
+}
+
+fn check_ifaces_are_valid(interfaces: &Vec<String>) -> Result<(), String> {
+    for iface in interfaces {
+        // bad. this does not allow for branching into other supported device types
+        match junos::is_valid_iface(&iface, junos::Srx1500::new().valid_ifaces) {
+            Ok((true, str)) => println!(" - \'{}\' matched \'{}\'", iface, str),
+            Ok((false, _str)) => {
+                return Err(format!("InvalidPortAssigned on interface \"{}\"", iface));
+            }
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    Ok(())
 }

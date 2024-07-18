@@ -5,18 +5,20 @@ ruleset:
     - allowlog ip outside any inside 80,443
     - denylog udp outside any inside 161-162
   deployment:
+    platform: junos
+    model: srx1500
     ingress:
       devicelist: ["test-device"]
       interfaces: ["ae10"]
       filters:
         src: ["example"]
         dst: ["example"]
-      deployable: True
-      established: True
+      deployable: true
+      established: true
       default: deny
       transforms:
-        src: False
-        dst: False
+        src: false
+        dst: false
     egress:
       devicelist:
         - test-device
@@ -27,9 +29,9 @@ ruleset:
           - "example"
         dst:
           - "example"
-      deployable: True
-      established: True
+      deployable: true
+      established: true
       default: deny
       transforms:
-        src: False
-        dst: False
+        src: false
+        dst: false

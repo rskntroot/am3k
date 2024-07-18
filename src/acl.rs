@@ -16,6 +16,8 @@ pub struct Ruleset {
 
 #[derive(Debug, Deserialize)]
 pub struct DeploymentRules {
+    pub platform: String,
+    pub model: String,
     pub ingress: Ingress,
     pub egress: Egress,
 }
@@ -64,6 +66,8 @@ ruleset:
     - allowlog ip outside any inside 80,443
     - denylog udp outside any inside 161-162
   deployment:
+    platform: junos
+    model: srx1500
     ingress:
       devicelist: [ "test-device" ]
       interfaces: [ "ae10" ]
