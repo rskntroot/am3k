@@ -1,46 +1,14 @@
 #[allow(dead_code)]
-mod acl;
-
+mod config;
+mod ruleset;
+use crate::ruleset::Rule;
 #[allow(dead_code)]
+mod device;
 mod junos;
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-
-#[derive(Debug, PartialEq)]
-enum Action {
-    Allow,
-    Deny,
-    AllowLog,
-    DenyLog,
-}
-
-#[derive(Debug, PartialEq)]
-enum Protocol {
-    TCP,
-    UDP,
-    ICMP,
-    IP,
-}
-
-#[derive(Debug, PartialEq)]
-enum PortVariant {
-    Any,
-    Range(String),
-    List(String),
-    Num(u16),
-}
-
-#[derive(Debug, PartialEq)]
-struct Rule {
-    action: Action,
-    protocol: Protocol,
-    src_prefix: String,
-    src_port: PortVariant,
-    dst_prefix: String,
-    dst_port: PortVariant,
-}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -52,14 +20,27 @@ fn main() {
         Ok(str) => str,
         Err(e) => panic!("{}", e),
     };
-    let configuration: acl::RulesetConfig = match serde_yml::from_str(&content) {
+    let configuration: config::RulesetConfig = match serde_yml::from_str(&content) {
         Ok(ruleset) => ruleset,
         Err(e) => panic!("Error deserializing YAML: {}", e),
     };
     // println!("{:#?}", configuration);
 
-    let validated_generics: Vec<Rule> = extrapolate_generics(&configuration.ruleset.generic);
+    println!("\nChecking all generics are valid rules...");
+    let validated_generics: Vec<Rule> = match parse_generic_rules(&configuration.ruleset.generic) {
+        Ok(rules) => rules,
+        Err(errors) => {
+            for e in &errors {
+                eprintln!("{}", e);
+            }
+            panic!(
+                "GenericsRuleParser found {} errors. Please update rules.",
+                errors.len()
+            );
+        }
+    };
     println!("{:#?}", validated_generics);
+    println!("Valid rules provided in generics.");
 
     println!("\nChecking interfaces assignments for ingress...");
     match check_ifaces_are_valid(&configuration.ruleset.deployment.ingress.interfaces) {
@@ -74,73 +55,31 @@ fn main() {
     }
 }
 
-fn extrapolate_generics(generics: &Vec<String>) -> Vec<Rule> {
-    let mut extrapolated_rules: Vec<Rule> = Vec::new();
+fn parse_generic_rules(rules: &Vec<String>) -> Result<Vec<Rule>, Vec<String>> {
+    let mut parsed_rules: Vec<Rule> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
 
-    for rule in generics {
-        let parts: Vec<&str> = rule.split_whitespace().collect();
-        if parts.len() < 5 {
-            panic!(
-                "Failed to parse provided rule: {} :: Expected 5 fields, got {}",
-                rule,
-                parts.len()
-            );
-        }
-
-        let extrapolated_rule: Rule = Rule {
-            action: match parts[0] {
-                "allow" => Action::Allow,
-                "deny" => Action::Deny,
-                "allowlog" => Action::AllowLog,
-                "denylog" => Action::DenyLog,
-                _ => panic!("Failed to parse action in rule: {} :: Field 0", rule),
-            },
-            protocol: match parts[1] {
-                "tcp" => Protocol::TCP,
-                "udp" => Protocol::UDP,
-                "icmp" => Protocol::ICMP,
-                "ip" => Protocol::IP,
-                _ => panic!("Failed to parse action in rule: {} :: Field 1", rule),
-            },
-            src_prefix: parts[2].to_string(),
-            src_port: match parse_portvariant(&parts[3]) {
-                Ok(portvariant) => portvariant,
-                Err(_) => panic!("Failed to parse src_port in rule: {} :: Field 3", rule),
-            },
-            dst_prefix: parts[4].to_string(),
-            dst_port: match parse_portvariant(&parts[5]) {
-                Ok(portvariant) => portvariant,
-                Err(_) => panic!("Failed to parse src_port in rule: {} :: Field 5", rule),
-            },
-        };
-
-        extrapolated_rules.push(extrapolated_rule);
-    }
-
-    extrapolated_rules
-}
-
-fn parse_portvariant(port: &str) -> Result<PortVariant, String> {
-    match port.parse::<u16>() {
-        Ok(num) => Result::Ok(PortVariant::Num(num)),
-        Err(_e) => {
-            if port.eq_ignore_ascii_case("any") {
-                Result::Ok(PortVariant::Any)
-            } else if port.contains("-") {
-                Result::Ok(PortVariant::Range(port.to_string()))
-            } else if port.contains(",") {
-                Result::Ok(PortVariant::List(port.to_string()))
-            } else {
-                Result::Err(String::from("Division by zero"))
+    for rule in rules {
+        parsed_rules.push(match Rule::from_str(rule) {
+            Ok(r) => r,
+            Err(e) => {
+                errors.push(format!("\n{} on\n  - {}", e, rule).to_string());
+                continue;
             }
-        }
+        });
     }
+
+    if errors.len() > 0 {
+        return Err(errors);
+    }
+
+    Ok(parsed_rules)
 }
 
+// todo add multi-device support
 fn check_ifaces_are_valid(interfaces: &Vec<String>) -> Result<(), String> {
     for iface in interfaces {
-        // bad. this does not allow for branching into other supported device types
-        match junos::is_valid_iface(&iface, junos::Srx1500::new().valid_ifaces) {
+        match junos::srx1500("example").is_valid_iface(&iface) {
             Ok((true, str)) => println!(" - \'{}\' matched \'{}\'", iface, str),
             Ok((false, _str)) => {
                 return Err(format!("InvalidPortAssigned on interface \"{}\"", iface));

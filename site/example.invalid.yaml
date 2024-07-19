@@ -1,9 +1,10 @@
 ruleset:
   generic:
-    - allow icmp outside any inside 8
-    - deny tcp outside any inside 22
-    - allowlog ip outside any inside 80,443
-    - denylog udp outside any inside 161-162
+    - allow icmps outside any inside 8
+    - denys tcp outside any inside 22
+    - allowlog ip outside anys inside 80,443
+    - denylog udp outside any inside $
+    - test inside to outside
   deployment:
     platform: junos
     model: srx1500
