@@ -5,36 +5,34 @@
 ### Usage
 
 ``` zsh
-$ target/release/acl-builder
-thread 'main' panicked at src/main.rs:16:9:
-Usage: target/release/acl-builder <input_yaml>
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-```
+$ target/release/acl-builder --help
 
-### Invalid Config
+Usage: acl-builder <config> [OPTIONS]
 
-``` zsh
-$ target/release/acl-builder site/example.invalid.yaml
+Options:
+  -d, --debug       Enable debug mode for additional logging and diagnostic information.
+  -h, --help        Print this help message and exit.
 
-Checking all generics are valid rules...
+Arguments:
+  <config>          Path to the yaml configuration file.
 
-ProtocolParseErr: expected 'allow', 'deny', 'allowlog', or 'denylog' on
-  - allow icmps outside any inside 8
+Examples:
+  acl-builder config.yaml
+  acl-builder config.yaml --debug
+  acl-builder config.yaml -d
 
-ActionParseErr: expected 'allow', 'deny', 'allowlog', or 'denylog' on
-  - denys tcp outside any inside 22
+Description:
+  The acl-builder tool is used to build and manage access control lists (ACLs) based on the provided configuration file.
+  The configuration file should be a YAML file specifying the rules and settings for the ACL.
 
-SrcPortInvalid :: expected a port, range list, or 'any' on
-  - allowlog ip outside anys inside 80,443
+  - The <config> argument is mandatory and specifies the path to the configuration file.
+  - Use the -d or --debug option to enable debug mode, which provides additional output useful for debugging.
 
-DstPortInvalid :: expected a port, range list, or 'any' on
-  - denylog udp outside any inside $
+Notes:
+  - Ensure the configuration file is correctly formatted as a YAML file.
+  - The tool will output the resulting ACL to the standard output or to a specified file as configured.
 
-RuleLengthErr :: Expected 5 fields, got 4 on
-  - test inside to outside
-thread 'main' panicked at src/main.rs:36:13:
-GenericsRuleParser found 5 errors. Please update rules.
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+For more information, visit: [[ NotYetImplementedError ]]
 ```
 
 ### Valid Config
@@ -42,64 +40,80 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 ``` zsh
 $ target/release/acl-builder site/example.valid.yaml
 
-Checking all generics are valid rules...
-[
-    Rule {
-        action: Allow,
-        protocol: ICMP,
-        src_prefix: "outside",
-        src_port: Any,
-        dst_prefix: "inside",
-        dst_port: Num(
-            8,
-        ),
-    },
-    Rule {
-        action: Deny,
-        protocol: TCP,
-        src_prefix: "outside",
-        src_port: Any,
-        dst_prefix: "inside",
-        dst_port: Num(
-            22,
-        ),
-    },
-    Rule {
-        action: AllowLog,
-        protocol: IP,
-        src_prefix: "outside",
-        src_port: Any,
-        dst_prefix: "inside",
-        dst_port: List(
-            "80,443",
-        ),
-    },
-    Rule {
-        action: DenyLog,
-        protocol: UDP,
-        src_prefix: "outside",
-        src_port: Any,
-        dst_prefix: "inside",
-        dst_port: Range(
-            "161-162",
-        ),
-    },
-    Rule {
-        action: Deny,
-        protocol: IP,
-        src_prefix: "outside",
-        src_port: Any,
-        dst_prefix: "inside",
-        dst_port: Any,
-    },
-]
-Valid rules provided in generics.
+Loading configuration file site/example.valid.yaml...
+Configuration file loaded without issue.
 
-Checking interfaces assignments for ingress...
- - 'ae10' matched '^(ae|lo)\d{1,3}(\.\d{1,3})?$'
+Checking configuration file components are valid:
+
+1. Checking platform and model are supported...
+Deployments for junos srx1500 are supported.
+
+2. Checking devicelist against device naming convention...
+Valid device names per naming convention
+
+3. Checking interfaces assignments for ingress...
 Valid interface assignments for ingress.
 
-Checking interfaces assignments for egress...
- - 'ae20' matched '^(ae|lo)\d{1,3}(\.\d{1,3})?$'
-Valid port assignments for egress.
+4. Checking interfaces assignments for egress...
+Valid interface assignments for egress.
+
+5. Checking all generics are valid rules...
+[
+    "allow icmp outside any inside 8",
+    "deny tcp outside any inside 22",
+    "allowlog ip outside any inside 80,443",
+    "denylog udp outside any inside 161-162",
+    "deny ip outside any inside any",
+]
+Valid rules provided in generics.
+```
+
+### Invalid Config
+
+``` zsh
+$ target/release/acl-builder site/example.invalid.yaml
+
+Loading configuration file site/example.invalid.yaml...
+Configuration file loaded without issue.
+
+Checking configuration file components are valid:
+
+1. Checking platform and model are supported...
+Deployments for junos srx1500 are supported.
+
+2. Checking devicelist against device naming convention...
+Valid device names per naming convention
+
+3. Checking interfaces assignments for ingress...
+Valid interface assignments for ingress.
+
+4. Checking interfaces assignments for egress...
+Valid interface assignments for egress.
+
+5. Checking all generics are valid rules...
+[
+    "allow icmps outside any inside 8",
+    "denys tcp outside any inside 22",
+    "allowlog ip outside anys inside 80,443",
+    "denylog udp outside any inside $",
+    "test inside to outside",
+]
+
+ProtocolParseErr: expected 'ip', 'tcp', 'udp', or 'icmp' on
+  - allow icmps outside any inside 8
+
+ActionParseErr: expected 'allow', 'deny', 'allowlog', or 'denylog' on
+  - denys tcp outside any inside 22
+
+SrcPortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any' on
+  - allowlog ip outside anys inside 80,443
+
+DstPortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any' on
+  - denylog udp outside any inside $
+
+RuleLengthErr: expected 6 fields, got 4 on
+  - test inside to outside
+thread 'main' panicked at src/main.rs:163:13:
+ - GenericsRuleParser found 5 errors. Please update rules.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 ```

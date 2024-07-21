@@ -52,7 +52,7 @@ pub enum Protocol {
 
 impl Protocol {
     const ERROR_MSG: &'static str = "ProtocolParseErr";
-    const HELP_MSG: &'static str = "expected 'allow', 'deny', 'allowlog', or 'denylog'";
+    const HELP_MSG: &'static str = "expected 'ip', 'tcp', 'udp', or 'icmp'";
 }
 
 impl FromStr for Protocol {
@@ -93,6 +93,12 @@ pub enum PortVariant {
     Num(u16),
 }
 
+impl PortVariant {
+    const ERROR_MSG: &'static str = "PortInvalid";
+    const HELP_MSG: &'static str =
+        "expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'";
+}
+
 impl FromStr for PortVariant {
     type Err = String;
 
@@ -107,8 +113,10 @@ impl FromStr for PortVariant {
                 } else if s.contains(",") {
                     Ok(PortVariant::List(s.to_string()))
                 } else {
-                    Err(String::from(
-                        "PortInvalid :: expected a port, range list, or 'any'",
+                    Err(format!(
+                        "{}: {}",
+                        PortVariant::ERROR_MSG,
+                        PortVariant::HELP_MSG
                     ))
                 }
             }
@@ -138,13 +146,18 @@ pub struct Rule {
 }
 
 impl Rule {
+    const ERROR_MSG: &'static str = "RuleLengthErr";
+    const HELP_MSG: &'static str = "expected 6 fields";
+
     pub fn from_str(s: &str) -> Result<Self, String> {
         let parts: Vec<&str> = s.split_whitespace().collect();
 
-        if parts.len() < 5 {
+        if parts.len() != 6 {
             return Err(format!(
-                "RuleLengthErr :: Expected 5 fields, got {}",
-                parts.len()
+                "{}: {}, got {}",
+                Rule::ERROR_MSG,
+                Rule::HELP_MSG,
+                parts.len(),
             ));
         }
 
@@ -183,5 +196,59 @@ impl fmt::Display for Rule {
             self.dst_prefix,
             self.dst_port
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ruleset::{Action, PortVariant, Protocol, Rule};
+
+    #[test]
+    fn rule_length_err_short() {
+        let ss: &str = "short rule.";
+        let result: String = Rule::from_str(ss).unwrap_err();
+        let expected = format!("{}: {}, got 2", Rule::ERROR_MSG, Rule::HELP_MSG);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn rule_length_err_long() {
+        let ls: &str = "this is an extra long rule, ok.";
+        let result: String = Rule::from_str(ls).unwrap_err();
+        let expected = format!("{}: {}, got 7", Rule::ERROR_MSG, Rule::HELP_MSG);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn action_parse_err() {
+        let s: &str = "[failhere] ip inside any outside any";
+        let result: String = Rule::from_str(s).unwrap_err();
+        println!("{}", result);
+        assert!(result.contains(Action::ERROR_MSG), "error_msg missing");
+        assert!(result.contains(Action::HELP_MSG), "help_msg missing");
+    }
+
+    #[test]
+    fn protocol_parse_err() {
+        let s: &str = "deny [failhere] inside any outside any";
+        let result: String = Rule::from_str(s).unwrap_err();
+        assert!(result.contains(Protocol::ERROR_MSG), "error_msg missing");
+        assert!(result.contains(Protocol::HELP_MSG), "help_msg missing");
+    }
+
+    #[test]
+    fn src_port_invalid() {
+        let s: &str = "deny ip inside [failhere] outside any";
+        let result: String = Rule::from_str(s).unwrap_err();
+        assert!(result.contains(PortVariant::ERROR_MSG), "error_msg missing");
+        assert!(result.contains(PortVariant::HELP_MSG), "error_msg missing");
+    }
+
+    #[test]
+    fn dst_port_invalid() {
+        let s: &str = "deny ip inside any outside failhere";
+        let result: String = Rule::from_str(s).unwrap_err();
+        assert!(result.contains(PortVariant::ERROR_MSG), "error_msg missing");
+        assert!(result.contains(PortVariant::HELP_MSG), "error_msg missing");
     }
 }

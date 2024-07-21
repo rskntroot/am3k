@@ -1,9 +1,12 @@
+#![allow(dead_code)]
+
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 
-pub struct RulesetConfig {
+pub struct Configuration {
     pub ruleset: Ruleset,
+    pub defaults: Defaults,
 }
 
 #[derive(Debug, Deserialize)]
@@ -16,13 +19,13 @@ pub struct Ruleset {
 pub struct DeploymentRules {
     pub platform: String,
     pub model: String,
+    pub devicelist: Vec<String>,
     pub ingress: Ingress,
     pub egress: Egress,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Ingress {
-    pub devicelist: Vec<String>,
     pub interfaces: Vec<String>,
     pub filters: Filters,
     pub deployable: bool,
@@ -33,7 +36,6 @@ pub struct Ingress {
 
 #[derive(Debug, Deserialize)]
 pub struct Egress {
-    pub devicelist: Vec<String>,
     pub interfaces: Vec<String>,
     pub filters: Filters,
     pub deployable: bool,
@@ -52,4 +54,9 @@ pub struct Filters {
 pub struct Transforms {
     pub src: bool,
     pub dst: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Defaults {
+    pub device_regex: String,
 }
