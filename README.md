@@ -65,7 +65,7 @@ Valid interface assignments for egress.
     "denylog udp outside any inside 161-162",
     "deny ip outside any inside any",
 ]
-Valid rules provided in generics.
+Valid rules provided.
 ```
 
 ### Invalid Config

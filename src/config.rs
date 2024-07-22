@@ -5,18 +5,13 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 
 pub struct Configuration {
-    pub ruleset: Ruleset,
+    pub ruleset: Vec<String>,
+    pub deployment: Deployment,
     pub defaults: Defaults,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Ruleset {
-    pub generic: Vec<String>,
-    pub deployment: DeploymentRules,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DeploymentRules {
+pub struct Deployment {
     pub platform: String,
     pub model: String,
     pub devicelist: Vec<String>,

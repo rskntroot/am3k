@@ -3,7 +3,6 @@ mod device;
 mod junos;
 mod ruleset;
 
-use crate::config::DeploymentRules;
 use crate::ruleset::Rule;
 
 use std::env;
@@ -32,7 +31,6 @@ Arguments:
 
 Examples:
   acl-builder config.yaml
-  acl-builder config.yaml --debug
   acl-builder config.yaml -d
 
 Description:
@@ -49,7 +47,6 @@ Notes:
 For more information, visit: [[ NotYetImplementedError ]]
 
 "#;
-
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -80,28 +77,6 @@ fn main() {
     println!("\nChecking configuration file components are valid:");
     let mut check_index: u8 = 0;
 
-    // CHECK DEVICES ARE SUPPORTED
-
-    check_index += 1;
-    println!(
-        "\n{}. Checking platform and model are supported...",
-        check_index
-    );
-
-    match check_device_supported(
-        &cfg.ruleset.deployment.platform,
-        &cfg.ruleset.deployment.model,
-    ) {
-        Ok(_) => println!(
-            "Deployments for {} {} are supported.",
-            &cfg.ruleset.deployment.platform, &cfg.ruleset.deployment.model
-        ),
-        Err(e) => panic!("{}", e),
-    }
-
-    let deployable_device = junos::srx1500("generic-device");
-    let deployment: &DeploymentRules = &cfg.ruleset.deployment;
-
     // CHECK DEVICE NAMES ARE VALID
 
     check_index += 1;
@@ -110,10 +85,32 @@ fn main() {
         check_index
     );
 
-    match check_device_names(&deployment.devicelist, &cfg.defaults.device_regex) {
+    match check_device_names(&cfg.deployment.devicelist, &cfg.defaults.device_regex) {
         Ok(_) => println!("Valid device names per naming convention"),
         Err(e) => panic!("{:#?} on {}", e, cfg.defaults.device_regex),
     };
+
+    // CHECK DEVICES ARE SUPPORTED
+
+    check_index += 1;
+    println!(
+        "\n{}. Checking platform and model are supported...",
+        check_index
+    );
+
+    let deployable_device = match cfg.deployment.platform.as_str() {
+        "junos" => match junos::new("generic-device", &cfg.deployment.model) {
+            Ok(d) => d,
+            Err(e) => panic!("{}", e),
+        },
+        _ => panic!(
+            "{}: {}",
+            device::SupportedPlatform::ERROR_MSG,
+            device::SupportedPlatform::HELP_MSG,
+        ),
+    };
+    user_dbg!(debug_mode, "{}", deployable_device);
+    println!("Platform and model are supported.");
 
     // CHECK INTERFACE ASSIGNMENTS ARE VALID
 
@@ -123,11 +120,11 @@ fn main() {
         check_index
     );
 
-    match check_ifaces_are_valid(&deployable_device, &deployment.ingress.interfaces) {
+    match deployable_device.are_valid_ifaces(&cfg.deployment.ingress.interfaces) {
         Ok(ifaces) => {
             user_dbg!(debug_mode, "{:#?}", ifaces);
             println!("Valid interface assignments for ingress.");
-        },
+        }
         Err(e) => panic!("{:#?}", e),
     }
 
@@ -137,49 +134,37 @@ fn main() {
         check_index
     );
 
-    match check_ifaces_are_valid(&deployable_device, &deployment.ingress.interfaces) {
+    match deployable_device.are_valid_ifaces(&cfg.deployment.ingress.interfaces) {
         Ok(ifaces) => {
             user_dbg!(debug_mode, "{:#?}", ifaces);
             println!("Valid interface assignments for egress.");
-        },
+        }
         Err(e) => panic!("{:#?}", e),
     }
 
-    // CHECK GENERIC RULES ARE VALID
+    // CHECK RULES ARE VALID
 
     check_index += 1;
-    println!(
-        "\n{}. Checking all generics are valid rules...",
-        check_index
-    );
+    println!("\n{}. Checking all rules are valid...", check_index);
 
-    println!("{:#?}", &cfg.ruleset.generic);
-    let validated_generics: Vec<Rule> = match get_valid_generic_rules(&cfg.ruleset.generic) {
+    println!("{:#?}", &cfg.ruleset);
+    let validated_rules: Vec<Rule> = match parse_rules(&cfg.ruleset) {
         Ok(rules) => rules,
         Err(errors) => {
             for e in &errors {
-                eprintln!("{}", e);
+                eprintln!("{}:{} :: {}", &args[1], e.2 + 2, e.0);
             }
             panic!(
-                " - GenericsRuleParser found {} errors. Please update rules.",
+                " - RulesParser found {} errors. Please update rules.",
                 errors.len()
             );
         }
     };
-    user_dbg!(debug_mode, "{:#?}", validated_generics);
-    println!("Valid rules provided in generics.");
+    user_dbg!(debug_mode, "{:#?}", validated_rules);
+    println!("Valid rules provided in rules.");
 }
 
-fn check_device_supported(make: &str, model: &str) -> Result<bool, String> {
-    match make {
-        "junos" => match junos::SUPPORTED_DEVICES.contains(&model) {
-            true => return Ok(true),
-            _ => return Err(format!("{} model {} is not supported", make, model)),
-        },
-        _ => return Err(format!("Platform {} is not supported", make)),
-    }
-}
-
+/// ## Function
 /// Regex lookup for all devices in provided `devicelist` against provided `pattern`
 /// - if all devices in devicelist match the provided patternReturns `Result: Ok(true)`
 /// - else returns list of devices with DeviceNameInvalid `Result: Err(Vec<String>)`
@@ -208,41 +193,20 @@ fn check_device_names(devicelist: &Vec<String>, pattern: &str) -> Result<bool, V
     Ok(true)
 }
 
-// TODO: add docstring
-fn check_ifaces_are_valid(
-    device: &device::Device,
-    interfaces: &Vec<String>,
-) -> Result<Vec<String>, Vec<String>> {
-    let mut valid_ifaces: Vec<String> = Vec::new();
-    let mut errors: Vec<String> = Vec::new();
+/// ## Function
+/// Parses rules from `&Vec<String>` to `Vec<crate::ruleset::Rule>`
+/// - if all rules are valid Returns `Ok(Vec<crate::ruleset::Rule>)`
+/// - else returns list a rules with errors Returns: `Err(Vec<(String, String, usize)>)`
+///     - as `(<error>, <rule>, <index>)`
+fn parse_rules(raw_rules: &Vec<String>) -> Result<Vec<Rule>, Vec<(String, String, usize)>> {
+    let mut valid_rules: Vec<Rule> = Vec::new();
+    let mut errors: Vec<(String, String, usize)> = Vec::new();
 
-    for iface in interfaces {
-        match device.is_valid_iface(&iface) {
-            Ok((true, str)) => valid_ifaces.push(format!(" - \'{}\' matched \'{}\'", iface, str)),
-            Ok((false, _str)) => {
-                errors.push(format!("InvalidPortAssigned on interface \'{}\'", iface))
-            }
-            Err(e) => panic!("{}", e),
-        }
-    }
-
-    if errors.len() > 0 {
-        return Err(errors);
-    }
-
-    Ok(valid_ifaces)
-}
-
-// TODO: add docstring
-fn get_valid_generic_rules(rules: &Vec<String>) -> Result<Vec<Rule>, Vec<String>> {
-    let mut parsed_rules: Vec<Rule> = Vec::new();
-    let mut errors: Vec<String> = Vec::new();
-
-    for rule in rules {
-        parsed_rules.push(match Rule::from_str(rule) {
+    for (i, rule) in raw_rules.iter().enumerate() {
+        valid_rules.push(match Rule::from_str(rule) {
             Ok(r) => r,
             Err(e) => {
-                errors.push(format!("\n{} on\n  - {}", e, rule).to_string());
+                errors.push((String::from(e), String::from(rule), i));
                 continue;
             }
         });
@@ -252,5 +216,34 @@ fn get_valid_generic_rules(rules: &Vec<String>) -> Result<Vec<Rule>, Vec<String>
         return Err(errors);
     }
 
-    Ok(parsed_rules)
+    Ok(valid_rules)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn device_has_valid_name() {
+        let device_name: String = String::from("rsk101-example-fw1");
+        let pattern: &str =
+            "^[a-z]{1,3}([0-9]{1,10}-){1,2}([a-z]{2,9}-){1,4}[a-z]{1,5}[1-9]([0-9]{0,9})?";
+
+        let result: bool = super::check_device_names(&vec![device_name], pattern).unwrap();
+
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn device_has_invalid_name() {
+        let device_name: String = String::from("firewall1");
+        let pattern: &str =
+            "^[a-z]{1,3}([0-9]{1,10}-){1,2}([a-z]{2,9}-){1,4}[a-z]{1,5}[1-9]([0-9]{0,9})?";
+
+        let result: Vec<String> =
+            super::check_device_names(&vec![device_name], pattern).unwrap_err();
+
+        assert!(
+            result[0].contains("DeviceNameInvalid"),
+            "Device unexpectedly matched regex."
+        );
+    }
 }

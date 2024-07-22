@@ -11,8 +11,8 @@ enum Action {
 }
 
 impl Action {
-    const ERROR_MSG: &'static str = "ActionParseErr";
-    const HELP_MSG: &'static str = "expected 'allow', 'deny', 'allowlog', or 'denylog'";
+    pub const ERROR_MSG: &'static str = "ActionParseErr";
+    pub const HELP_MSG: &'static str = "expected 'allow', 'deny', 'allowlog', or 'denylog'";
 }
 
 impl FromStr for Action {
@@ -51,8 +51,8 @@ pub enum Protocol {
 }
 
 impl Protocol {
-    const ERROR_MSG: &'static str = "ProtocolParseErr";
-    const HELP_MSG: &'static str = "expected 'ip', 'tcp', 'udp', or 'icmp'";
+    pub const ERROR_MSG: &'static str = "ProtocolParseErr";
+    pub const HELP_MSG: &'static str = "expected 'ip', 'tcp', 'udp', or 'icmp'";
 }
 
 impl FromStr for Protocol {
@@ -94,8 +94,8 @@ pub enum PortVariant {
 }
 
 impl PortVariant {
-    const ERROR_MSG: &'static str = "PortInvalid";
-    const HELP_MSG: &'static str =
+    pub const ERROR_MSG: &'static str = "PortInvalid";
+    pub const HELP_MSG: &'static str =
         "expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'";
 }
 
@@ -146,8 +146,8 @@ pub struct Rule {
 }
 
 impl Rule {
-    const ERROR_MSG: &'static str = "RuleLengthErr";
-    const HELP_MSG: &'static str = "expected 6 fields";
+    pub const ERROR_MSG: &'static str = "RuleLengthErr";
+    pub const HELP_MSG: &'static str = "expected 6 fields";
 
     pub fn from_str(s: &str) -> Result<Self, String> {
         let parts: Vec<&str> = s.split_whitespace().collect();
