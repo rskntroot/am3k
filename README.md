@@ -4,8 +4,8 @@
 
 ### Usage
 
-``` zsh
-$ target/release/acl-builder --help
+```
+$ target/release/acl-builder -h
 
 Usage: acl-builder <config> [OPTIONS]
 
@@ -18,7 +18,6 @@ Arguments:
 
 Examples:
   acl-builder config.yaml
-  acl-builder config.yaml --debug
   acl-builder config.yaml -d
 
 Description:
@@ -37,19 +36,19 @@ For more information, visit: [[ NotYetImplementedError ]]
 
 ### Valid Config
 
-``` zsh
-$ target/release/acl-builder site/example.valid.yaml
+```
+$ target/release/acl-builder site/example/valid.yaml
 
-Loading configuration file site/example.valid.yaml...
+Loading configuration file site/example/valid.yaml...
 Configuration file loaded without issue.
 
 Checking configuration file components are valid:
 
-1. Checking platform and model are supported...
-Deployments for junos srx1500 are supported.
-
-2. Checking devicelist against device naming convention...
+1. Checking devicelist against device naming convention...
 Valid device names per naming convention
+
+2. Checking platform and model are supported...
+Platform and model are supported.
 
 3. Checking interfaces assignments for ingress...
 Valid interface assignments for ingress.
@@ -57,32 +56,25 @@ Valid interface assignments for ingress.
 4. Checking interfaces assignments for egress...
 Valid interface assignments for egress.
 
-5. Checking all generics are valid rules...
-[
-    "allow icmp outside any inside 8",
-    "deny tcp outside any inside 22",
-    "allowlog ip outside any inside 80,443",
-    "denylog udp outside any inside 161-162",
-    "deny ip outside any inside any",
-]
-Valid rules provided.
+5. Checking all rules are valid...
+Valid rules provided in rules.
 ```
 
-### Invalid Config
+### Invalid Rules Config
 
-``` zsh
-$ target/release/acl-builder site/example.invalid.yaml
+```
+$ target/release/acl-builder site/example/rules.invalid.yaml
 
-Loading configuration file site/example.invalid.yaml...
+Loading configuration file site/example/rules.invalid.yaml...
 Configuration file loaded without issue.
 
 Checking configuration file components are valid:
 
-1. Checking platform and model are supported...
-Deployments for junos srx1500 are supported.
-
-2. Checking devicelist against device naming convention...
+1. Checking devicelist against device naming convention...
 Valid device names per naming convention
+
+2. Checking platform and model are supported...
+Platform and model are supported.
 
 3. Checking interfaces assignments for ingress...
 Valid interface assignments for ingress.
@@ -90,30 +82,43 @@ Valid interface assignments for ingress.
 4. Checking interfaces assignments for egress...
 Valid interface assignments for egress.
 
-5. Checking all generics are valid rules...
-[
-    "allow icmps outside any inside 8",
-    "denys tcp outside any inside 22",
-    "allowlog ip outside anys inside 80,443",
-    "denylog udp outside any inside $",
-    "test inside to outside",
-]
+5. Checking all rules are valid...
+site/example/rules.invalid.yaml:2 :: ProtocolParseErr: expected 'ip', 'tcp', 'udp', or 'icmp'
+site/example/rules.invalid.yaml:3 :: ActionParseErr: expected 'allow', 'deny', 'allowlog', or 'denylog'
+site/example/rules.invalid.yaml:4 :: SrcPortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:5 :: DstPortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:6 :: RuleLengthErr: expected 6 fields, got 4
+thread 'main' panicked at src/main.rs:157:13:
+ - RulesParser found 5 errors. Please update rules.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
 
-ProtocolParseErr: expected 'ip', 'tcp', 'udp', or 'icmp' on
-  - allow icmps outside any inside 8
+### Invalid Ports Config
 
-ActionParseErr: expected 'allow', 'deny', 'allowlog', or 'denylog' on
-  - denys tcp outside any inside 22
+```
+$ target/release/acl-builder site/example/ports.invalid.yaml
 
-SrcPortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any' on
-  - allowlog ip outside anys inside 80,443
+Loading configuration file site/example/ports.invalid.yaml...
+Configuration file loaded without issue.
 
-DstPortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any' on
-  - denylog udp outside any inside $
+Checking configuration file components are valid:
 
-RuleLengthErr: expected 6 fields, got 4 on
-  - test inside to outside
-thread 'main' panicked at src/main.rs:163:13:
- - GenericsRuleParser found 5 errors. Please update rules.
+1. Checking devicelist against device naming convention...
+Valid device names per naming convention
+
+2. Checking platform and model are supported...
+Platform and model are supported.
+
+3. Checking interfaces assignments for ingress...
+Valid interface assignments for ingress.
+
+4. Checking interfaces assignments for egress...
+Valid interface assignments for egress.
+
+5. Checking all rules are valid...
+site/example/ports.invalid.yaml:2 :: ExpandingDstPortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/ports.invalid.yaml:3 :: ExpandingSrcPortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+thread 'main' panicked at src/main.rs:157:13:
+ - RulesParser found 2 errors. Please update rules.
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 ```

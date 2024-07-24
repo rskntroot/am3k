@@ -3,7 +3,7 @@ mod device;
 mod junos;
 mod ruleset;
 
-use crate::ruleset::Rule;
+use crate::ruleset::Ruleset;
 
 use std::env;
 use std::fs;
@@ -147,8 +147,8 @@ fn main() {
     check_index += 1;
     println!("\n{}. Checking all rules are valid...", check_index);
 
-    println!("{:#?}", &cfg.ruleset);
-    let validated_rules: Vec<Rule> = match parse_rules(&cfg.ruleset) {
+    user_dbg!(debug_mode, "{:#?}", &cfg.ruleset);
+    let validated_rules: Ruleset = match Ruleset::new(&cfg.ruleset) {
         Ok(rules) => rules,
         Err(errors) => {
             for e in &errors {
@@ -160,7 +160,7 @@ fn main() {
             );
         }
     };
-    user_dbg!(debug_mode, "{:#?}", validated_rules);
+    user_dbg!(debug_mode, "{:#?}", &validated_rules.rules);
     println!("Valid rules provided in rules.");
 }
 
@@ -182,7 +182,7 @@ fn check_device_names(devicelist: &Vec<String>, pattern: &str) -> Result<bool, V
     for device in devicelist {
         match pattern.is_match(&device) {
             true => {}
-            _ => errors.push(format!("DeviceNameInvalid on device {}", device)),
+            _ => errors.push(format!("DeviceNameInvalid on device {}", &device)),
         };
     }
 
@@ -191,32 +191,6 @@ fn check_device_names(devicelist: &Vec<String>, pattern: &str) -> Result<bool, V
     }
 
     Ok(true)
-}
-
-/// ## Function
-/// Parses rules from `&Vec<String>` to `Vec<crate::ruleset::Rule>`
-/// - if all rules are valid Returns `Ok(Vec<crate::ruleset::Rule>)`
-/// - else returns list a rules with errors Returns: `Err(Vec<(String, String, usize)>)`
-///     - as `(<error>, <rule>, <index>)`
-fn parse_rules(raw_rules: &Vec<String>) -> Result<Vec<Rule>, Vec<(String, String, usize)>> {
-    let mut valid_rules: Vec<Rule> = Vec::new();
-    let mut errors: Vec<(String, String, usize)> = Vec::new();
-
-    for (i, rule) in raw_rules.iter().enumerate() {
-        valid_rules.push(match Rule::from_str(rule) {
-            Ok(r) => r,
-            Err(e) => {
-                errors.push((String::from(e), String::from(rule), i));
-                continue;
-            }
-        });
-    }
-
-    if errors.len() > 0 {
-        return Err(errors);
-    }
-
-    Ok(valid_rules)
 }
 
 #[cfg(test)]

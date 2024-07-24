@@ -2,7 +2,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum Action {
     Allow,
     Deny,
@@ -41,8 +41,7 @@ impl fmt::Display for Action {
     }
 }
 
-// Define Protocol enum
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Protocol {
     TCP,
     UDP,
@@ -84,8 +83,7 @@ impl fmt::Display for Protocol {
     }
 }
 
-// Define PortVariant enum
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum PortVariant {
     Any,
     Range(String),
@@ -108,10 +106,10 @@ impl FromStr for PortVariant {
             Err(_) => {
                 if s == "any" {
                     Ok(PortVariant::Any)
-                } else if s.contains("-") {
-                    Ok(PortVariant::Range(s.to_string()))
                 } else if s.contains(",") {
                     Ok(PortVariant::List(s.to_string()))
+                } else if s.matches('-').count() == 1 {
+                    Ok(PortVariant::Range(s.to_string()))
                 } else {
                     Err(format!(
                         "{}: {}",
@@ -135,7 +133,7 @@ impl fmt::Display for PortVariant {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Rule {
     action: Action,
     protocol: Protocol,
@@ -146,17 +144,23 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub const ERROR_MSG: &'static str = "RuleLengthErr";
-    pub const HELP_MSG: &'static str = "expected 6 fields";
-
     pub fn from_str(s: &str) -> Result<Self, String> {
         let parts: Vec<&str> = s.split_whitespace().collect();
 
         if parts.len() != 6 {
             return Err(format!(
                 "{}: {}, got {}",
-                Rule::ERROR_MSG,
-                Rule::HELP_MSG,
+                "RuleLengthErr",
+                "expected 6 fields",
+                parts.len(),
+            ));
+        }
+
+        if parts[3].contains(',') && parts[5].contains(',') {
+            return Err(format!(
+                "{}: {}, got {}",
+                "PortExpansionUnsupported",
+                "both src & dst ports cannot be port lists",
                 parts.len(),
             ));
         }
@@ -199,24 +203,164 @@ impl fmt::Display for Rule {
     }
 }
 
+#[derive(Debug)]
+pub struct Ruleset {
+    pub rules: Vec<Rule>,
+}
+
+impl Ruleset {
+    pub fn new(raw_rules: &Vec<String>) -> Result<Self, Vec<(String, String, usize)>> {
+        let rules: Vec<Rule> = match parse_rules(raw_rules) {
+            Ok(rs) => rs,
+            Err(e) => return Err(e),
+        };
+
+        let rules: Vec<Rule> = match expand_rules(rules) {
+            Ok(rs) => rs,
+            Err(e) => return Err(e),
+        };
+
+        Ok(Ruleset { rules })
+    }
+}
+
+/// ## Function
+/// parses rules from raw strings to validated rules that may require expansion
+/// ## Logic
+/// - if all rules are valid Returns `Ok(Vec<crate::ruleset::Rule>)`
+/// - else returns list a rules with errors Returns: `Err(Vec<(String, String, usize)>)`
+///     - as `(<error>, <rule>, <index>)`
+fn parse_rules(raw_rules: &Vec<String>) -> Result<Vec<Rule>, Vec<(String, String, usize)>> {
+    let mut valid_rules: Vec<Rule> = Vec::new();
+    let mut errors: Vec<(String, String, usize)> = Vec::new();
+
+    for (i, rule) in raw_rules.iter().enumerate() {
+        valid_rules.push(match Rule::from_str(rule) {
+            Ok(r) => r,
+            Err(e) => {
+                errors.push((String::from(e), String::from(rule), i));
+                continue;
+            }
+        });
+    }
+
+    if errors.len() > 0 {
+        return Err(errors);
+    }
+
+    Ok(valid_rules)
+}
+
+/// ## Function
+/// expands all ranges of rules into individual entries to support
+/// deployment tools that do not have builtin handling for ranges.
+/// ## Logic
+/// - check each rule for src or dst for list of ports
+/// - expand all rules that are lists
+/// - if all rules are valid Returns `Ok(Vec<crate::ruleset::Rule>)`
+/// - else returns list a rules with errors Returns: `Err(Vec<(String, String, usize)>)`
+///     - as `(<error>, <rule>, <index>)`
+fn expand_rules(rule_list: Vec<Rule>) -> Result<Vec<Rule>, Vec<(String, String, usize)>> {
+    let mut new_rule_list: Vec<Rule> = vec![];
+    let mut errors: Vec<(String, String, usize)> = Vec::new();
+
+    for (i, rule) in rule_list.iter().enumerate() {
+        if let PortVariant::List(_) = rule.src_port {
+            for new_port in expand_port_list(&rule.src_port).unwrap() {
+                let mut base_rule: Rule = rule.clone();
+                base_rule.src_port = match PortVariant::from_str(&new_port) {
+                    Ok(port) => port,
+                    Err(e) => {
+                        errors.push((format!("ExpandingSrc{}", e), format!("{}", &rule), i));
+                        continue;
+                    }
+                };
+
+                new_rule_list.push(base_rule);
+            }
+        } else if let PortVariant::List(_) = rule.dst_port {
+            for new_port in expand_port_list(&rule.dst_port).unwrap() {
+                let mut base_rule: Rule = rule.clone();
+                base_rule.dst_port = match PortVariant::from_str(&new_port) {
+                    Ok(port) => port,
+                    Err(e) => {
+                        errors.push((format!("ExpandingDst{}", e), format!("{}", &rule), i));
+                        continue;
+                    }
+                };
+
+                new_rule_list.push(base_rule);
+            }
+        } else {
+            new_rule_list.push(rule.clone());
+        }
+    }
+
+    if errors.len() > 0 {
+        return Err(errors);
+    }
+
+    Ok(new_rule_list)
+}
+
+
+/// shorthand port string split on comma
+fn expand_port_list(list: &PortVariant) -> Result<Vec<String>, String> {
+    match list {
+        PortVariant::List(_) => {}
+        _ => return Err(format!("parse_port_list() only takes PortVariant::List")),
+    }
+
+    Ok(list
+        .to_string()
+        .split(',')
+        .map(|i| String::from(i))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::ruleset::{Action, PortVariant, Protocol, Rule};
+    use crate::ruleset::{Action, PortVariant, Protocol, Rule, Ruleset};
+    #[test]
+    fn portlist_expansion_valid() {
+        let rs: Vec<String> = vec![
+            "allow udp outside any inside 161,162".to_string(),
+            "allow tcp inside any outside 22,80,443,9000-9010".to_string(),
+        ];
+        dbg!(Ruleset::new(&rs).unwrap());
+    }
+
+    #[test]
+    fn portlist_expansion_invalid() {
+        let rs: Vec<String> = vec![
+            "allow udp outside any inside 161,,162".to_string(),
+            "allow tcp inside 22,*,443,9000-9010 outside any".to_string(),
+        ];
+        dbg!(Ruleset::new(&rs).unwrap_err());
+    }
+
+    #[test]
+    fn rule_contains_multiple_lists() {
+        let rs: Vec<String> = vec![
+            "allow tcp inside 20,21 outside 9000,9010".to_string(),
+        ];
+        dbg!(Ruleset::new(&rs).unwrap_err());
+    }
 
     #[test]
     fn rule_length_err_short() {
         let ss: &str = "short rule.";
         let result: String = Rule::from_str(ss).unwrap_err();
-        let expected = format!("{}: {}, got 2", Rule::ERROR_MSG, Rule::HELP_MSG);
-        assert_eq!(result, expected);
+        assert!(result.contains("RuleLengthErr"), "unexpected error thrown");
+        assert!(result.contains("got 2"), "unexpected rule length");
     }
 
     #[test]
     fn rule_length_err_long() {
         let ls: &str = "this is an extra long rule, ok.";
         let result: String = Rule::from_str(ls).unwrap_err();
-        let expected = format!("{}: {}, got 7", Rule::ERROR_MSG, Rule::HELP_MSG);
-        assert_eq!(result, expected);
+        assert!(result.contains("RuleLengthErr"), "unexpected error thrown");
+        assert!(result.contains("got 7"), "unexpected rule length");
     }
 
     #[test]
