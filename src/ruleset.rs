@@ -303,7 +303,6 @@ fn expand_rules(rule_list: Vec<Rule>) -> Result<Vec<Rule>, Vec<(String, String, 
     Ok(new_rule_list)
 }
 
-
 /// shorthand port string split on comma
 fn expand_port_list(list: &PortVariant) -> Result<Vec<String>, String> {
     match list {
@@ -341,9 +340,7 @@ mod tests {
 
     #[test]
     fn rule_contains_multiple_lists() {
-        let rs: Vec<String> = vec![
-            "allow tcp inside 20,21 outside 9000,9010".to_string(),
-        ];
+        let rs: Vec<String> = vec!["allow tcp inside 20,21 outside 9000,9010".to_string()];
         dbg!(Ruleset::new(&rs).unwrap_err());
     }
 
