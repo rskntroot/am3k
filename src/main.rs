@@ -10,7 +10,7 @@ use ruleset::Ruleset;
 use std::env;
 
 pub const HELP_MSG: &str = r#"
-Usage: acl-builder <config> [OPTIONS]
+Usage: am3k <config> [OPTIONS]
 
 Options:
   -d, --debug       Enable debug mode for additional logging and diagnostic information.
@@ -20,15 +20,15 @@ Arguments:
   <config>          Path to the yaml configuration file.
 
 Examples:
-  acl-builder config.yaml
-  acl-builder config.yaml -d
+  am3k config.yaml
+  am3k config.yaml -d
 
 Description:
-  The acl-builder tool is used to build and manage access control lists (ACLs) based on the provided configuration file.
-  The configuration file should be a YAML file specifying the rules and settings for the ACL.
+  ACL Manager 3000 (am3k) is used to build and manage access control lists via provided configuration file.
+  The configuration file should be a YAML file specifying the rules and settings for the ACLs.
 
   - The <config> argument is mandatory and specifies the path to the configuration file.
-  - Use the -d or --debug option to enable debug mode, which provides additional output useful for debugging.
+  - Use the debug option to enable debug mode, which provides additional output useful in troubleshooting.
 
 Notes:
   - Ensure the configuration file is correctly formatted as a YAML file.

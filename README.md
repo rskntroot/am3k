@@ -13,9 +13,9 @@ a project that mainly exists for me to learn more rust
 ### Usage
 
 ```
-$ target/release/acl-builder -h
+$ target/release/am3k -h
 
-Usage: acl-builder <config> [OPTIONS]
+Usage: am3k <config> [OPTIONS]
 
 Options:
   -d, --debug       Enable debug mode for additional logging and diagnostic information.
@@ -25,15 +25,15 @@ Arguments:
   <config>          Path to the yaml configuration file.
 
 Examples:
-  acl-builder config.yaml
-  acl-builder config.yaml -d
+  am3k config.yaml
+  am3k config.yaml -d
 
 Description:
-  The acl-builder tool is used to build and manage access control lists (ACLs) based on the provided configuration file.
-  The configuration file should be a YAML file specifying the rules and settings for the ACL.
+  ACL Manager 3000 (am3k) is used to build and manage access control lists via provided configuration file.
+  The configuration file should be a YAML file specifying the rules and settings for the ACLs.
 
   - The <config> argument is mandatory and specifies the path to the configuration file.
-  - Use the -d or --debug option to enable debug mode, which provides additional output useful for debugging.
+  - Use the debug option to enable debug mode, which provides additional output useful in troubleshooting.
 
 Notes:
   - Ensure the configuration file is correctly formatted as a YAML file.
@@ -45,7 +45,7 @@ For more information, visit: [[ NotYetImplementedError ]]
 ### Valid Config
 
 ```
-$ target/release/acl-builder site/example/valid.yaml
+$ target/release/am3k site/example/valid.yaml
 
 Loading configuration file site/example/valid.yaml...
 Configuration file loaded successfully from yaml.
@@ -69,7 +69,7 @@ Valid rules provided in rules.
 ### Invalid Rules
 
 ```
-$ target/release/acl-builder site/example/rules.invalid.yaml
+$ target/release/am3k site/example/rules.invalid.yaml
 
 Loading configuration file site/example/rules.invalid.yaml...
 Configuration file loaded successfully from yaml.
@@ -132,6 +132,6 @@ test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 ### Size
 
 ```
-$ ls -lh target/release/acl-builder -h
--rwxrwxr-x 2 whoami whoami 3.0M Jul 30 08:00 target/release/acl-builder
+$ ls -lh target/release/am3k
+-rwxrwxr-x 2 lost lost 3.0M Jul 30 08:20 target/release/am3k
 ```
