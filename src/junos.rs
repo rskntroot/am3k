@@ -1,4 +1,5 @@
 use crate::device::{Device, SupportedPlatform};
+
 use regex::Regex;
 use std::fmt;
 use std::str::FromStr;

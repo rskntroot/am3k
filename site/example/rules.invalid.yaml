@@ -1,9 +1,11 @@
 ruleset:
-  - allow icmps outside any inside 8
+  - allow bgp outside any inside 179
   - denys tcp outside any inside 22
   - allowlog ip outside anys inside 80,443
   - denylog udp outside any inside $
   - test inside to outside
+  - allow udp outside any inside 161,,162
+  - allow tcp inside 22,*,443,9000-9010 outside any
 deployment:
   platform: junos
   model: srx1500

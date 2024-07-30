@@ -65,7 +65,6 @@ impl Device {
         }
     }
 
-    /// ## Function
     /// Checks if a single provided `iface` is valid
     /// - if valid Returns `(bool: true, String: pattern)`
     /// - else Returns `false, String: "")`
@@ -79,7 +78,6 @@ impl Device {
         Ok((false, String::new()))
     }
 
-    /// ## Function
     /// Checks all interfaces using `crate::device::Device::is_valid_iface`
     /// - if all interfaces are valid, return `Ok(Vec<String>)` containing valid matches
     /// - else returns `Err(Vec<String>)` containing `InvalidPortAssigned` matches
@@ -128,6 +126,7 @@ impl Device {
     }
 }
 
+#[derive(Debug)]
 enum Direction {
     Ingress,
     Egress,
