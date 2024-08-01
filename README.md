@@ -87,14 +87,14 @@ Checking interfaces assignments for egress...
 Valid interface assignments for egress.
 
 Checking all rules are valid...
-site/example/rules.invalid.yaml:2 :: ProtocolUnsupported: expected 'ip', 'tcp', 'udp', or 'icmp'
-site/example/rules.invalid.yaml:3 :: ActionInvalid: expected 'allow', 'deny', 'allowlog', or 'denylog'
-site/example/rules.invalid.yaml:4 :: PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
-site/example/rules.invalid.yaml:5 :: PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
-site/example/rules.invalid.yaml:6 :: RuleLengthErr: expected 6 fields
-site/example/rules.invalid.yaml:7 :: PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
-site/example/rules.invalid.yaml:8 :: PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
-[ERROR]: 7 configuration issues found while parsing rules.
+site/example/rules.invalid.yaml:2:11 ProtocolUnsupported: expected 'ip', 'tcp', 'udp', or 'icmp'
+site/example/rules.invalid.yaml:3:5 ActionInvalid: expected 'allow', 'deny', 'allowlog', or 'denylog'
+site/example/rules.invalid.yaml:4:25 PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:5:36 PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:6:28 RuleLengthErr: expected 6 fields
+site/example/rules.invalid.yaml:7:34 PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:8:22 PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+Rule configuration issues found while parsing: 7
 ```
 
 ## Tests

@@ -3,43 +3,22 @@
 use std::fmt;
 use std::str::FromStr;
 use std::vec::IntoIter;
+use thiserror::Error;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum FieldError {
+    #[error("ActionInvalid: expected 'allow', 'deny', 'allowlog', or 'denylog'")]
     ActionInvalid,
+    #[error("ProtocolUnsupported: expected 'ip', 'tcp', 'udp', or 'icmp'")]
     ProtocolUnsupported,
+    #[error("PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'")]
     PortInvalid,
+    #[error("PortOrderInvalid: port range start must be less than port range end")]
     PortOrderInvalid,
+    #[error("RuleLengthErr: expected 6 fields")]
     RuleLengthErr,
+    #[error("RuleExpansionUnsupported: both src & dst ports cannot be port lists")]
     RuleExpansionUnsupported,
-}
-
-impl fmt::Display for FieldError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let msg: (&str, &str) = match self {
-            FieldError::ActionInvalid => (
-                "ActionInvalid",
-                "expected 'allow', 'deny', 'allowlog', or 'denylog'"),
-            FieldError::ProtocolUnsupported => (
-                "ProtocolUnsupported",
-                "expected 'ip', 'tcp', 'udp', or 'icmp'"),
-            FieldError::PortInvalid => (
-                "PortInvalid",
-                "expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'"),
-            FieldError::PortOrderInvalid => (
-                "PortOrderInvalid",
-                "port range start must be less than port range end."
-            ),
-            FieldError::RuleLengthErr => (
-                "RuleLengthErr",
-                "expected 6 fields"),
-            FieldError::RuleExpansionUnsupported => (
-                "RuleExpansionUnsupported",
-                "both src & dst ports cannot be port lists",
-            ),
-        };
-        write!(f, "{}: {}", msg.0, msg.1)
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -121,12 +100,8 @@ impl PortMap {
         PortMap(vec![])
     }
 
-    /// ## Example PortMaps
-    /// #### Single Value
     /// - "22" => `Port[(22,22)]`
-    /// #### Range
     /// - "9000-9010" => `Port[9000,9010)]`
-    /// #### List with Range
     /// - "80,443,9000-9010" => `Port[(80,80);(443,443);(9000,9010)]`
     fn from_str(s: &str) -> Result<Self, FieldError> {
         match s.parse::<u16>() {
@@ -243,28 +218,60 @@ pub struct Rule {
 }
 
 impl FromStr for Rule {
-    type Err = FieldError;
+    type Err = (FieldError, Location);
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split_whitespace().collect();
 
         if parts.len() != 6 {
-            return Err(FieldError::RuleLengthErr);
-            //return Err(format!("{}: {}, got {}", "RuleLengthErr", "", parts.len(),));
+            return Err((FieldError::RuleLengthErr, Location::new(0, s.len() + 1)));
         }
 
         if parts[3].contains(',') && parts[5].contains(',') {
-            return Err(FieldError::RuleExpansionUnsupported);
-            // Err(format!( "{}: {}, got {}", "PortExpansionUnsupported", "", parts.len(), ));
+            return Err((
+                FieldError::RuleExpansionUnsupported,
+                Location::new(0, s.len() + 1),
+            ));
         }
 
+        let mut columns: Vec<usize> = vec![];
+        for (i, c) in s.trim().char_indices() {
+            if c.is_whitespace() {
+                columns.push(i + 1);
+            }
+        }
+
+        let action: Action = match Action::from_str(parts[0]) {
+            Ok(action) => action,
+            Err(e) => return Err((e, Location::new(0, 0))),
+        };
+
+        let protocol: Protocol = match Protocol::from_str(parts[1]) {
+            Ok(protocol) => protocol,
+            Err(e) => return Err((e, Location::new(0, columns[0]))),
+        };
+
+        // placeholder for src_prefix
+
+        let src_port: PortType = match PortType::from_str(parts[3]) {
+            Ok(protocol) => protocol,
+            Err(e) => return Err((e, Location::new(0, columns[2]))),
+        };
+
+        // placeholder for dst_prefix
+
+        let dst_port: PortType = match PortType::from_str(parts[5]) {
+            Ok(protocol) => protocol,
+            Err(e) => return Err((e, Location::new(0, columns[4]))),
+        };
+
         Ok(Rule {
-            action: Action::from_str(parts[0])?,
-            protocol: Protocol::from_str(parts[1])?,
+            action,
+            protocol,
             src_prefix: String::from(parts[2]),
-            src_port: PortType::from_str(parts[3])?,
+            src_port,
             dst_prefix: String::from(parts[4]),
-            dst_port: PortType::from_str(parts[5])?,
+            dst_port,
         })
     }
 }
@@ -296,9 +303,6 @@ impl Location {
     }
 }
 
-// todo add "phase" for global, src, dst
-// ie we want to know that portinvalid was thrown during src or dst processing
-// action and protocol can be considered "global" and ignored
 #[derive(Debug, PartialEq)]
 pub struct RuleErrors(Vec<(FieldError, Location)>);
 
@@ -346,12 +350,7 @@ impl Ruleset {
         self.0.push(rule);
     }
 
-    /// ## Function
-    /// parses rules from raw strings to validated rules that may require expansion
-    /// ## Logic
-    /// - if all rules are valid Returns `Ok(Vec<crate::ruleset::Rule>)`
-    /// - else returns list a rules with errors Returns: `Err(Vec<(String, String, usize)>)`
-    ///     - as `(<error>, <rule>, <index>)`
+    /// parses rules from vec of strings to validated rules that may require expansion
     pub fn from_vec(raw_rules: &Vec<String>) -> Result<Self, RuleErrors> {
         let mut ruleset: Ruleset = Ruleset::new();
         let mut errors: RuleErrors = RuleErrors::new();
@@ -359,7 +358,9 @@ impl Ruleset {
         for (i, rule) in raw_rules.iter().enumerate() {
             match Rule::from_str(rule) {
                 Ok(r) => ruleset.push(r),
-                Err(e) => errors.push(e, Location::new(i, 0)),
+                Err((e, l)) => {
+                    errors.push(e, Location::new(i, l.column));
+                }
             };
         }
 
@@ -456,23 +457,23 @@ mod tests {
     #[test]
     fn rule_lengths_invalid() {
         let ss: &str = "short rule.";
-        assert_eq!(Rule::from_str(ss).unwrap_err(), FieldError::RuleLengthErr);
+        assert_eq!(Rule::from_str(ss).unwrap_err().0, FieldError::RuleLengthErr);
 
         let ls: &str = "this is an extra long rule, ok.";
-        assert_eq!(Rule::from_str(ls).unwrap_err(), FieldError::RuleLengthErr);
+        assert_eq!(Rule::from_str(ls).unwrap_err().0, FieldError::RuleLengthErr);
     }
 
     #[test]
     fn action_parse_err() {
         let s: &str = "[failhere] ip inside any outside any";
-        assert_eq!(Rule::from_str(s).unwrap_err(), FieldError::ActionInvalid);
+        assert_eq!(Rule::from_str(s).unwrap_err().0, FieldError::ActionInvalid);
     }
 
     #[test]
     fn protocol_parse_err() {
         let s: &str = "deny [failhere] inside any outside any";
         assert_eq!(
-            Rule::from_str(s).unwrap_err(),
+            Rule::from_str(s).unwrap_err().0,
             FieldError::ProtocolUnsupported
         );
     }
@@ -480,12 +481,12 @@ mod tests {
     #[test]
     fn src_port_invalid() {
         let s: &str = "deny ip inside [failhere] outside any";
-        assert_eq!(Rule::from_str(s).unwrap_err(), FieldError::PortInvalid);
+        assert_eq!(Rule::from_str(s).unwrap_err().0, FieldError::PortInvalid);
     }
 
     #[test]
     fn dst_port_invalid() {
-        let s: &str = "deny ip inside any outside failhere";
-        assert_eq!(Rule::from_str(s).unwrap_err(), FieldError::PortInvalid);
+        let s: &str = "deny ip inside any outside [failhere]";
+        assert_eq!(Rule::from_str(s).unwrap_err().0, FieldError::PortInvalid);
     }
 }

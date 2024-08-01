@@ -103,10 +103,10 @@ fn main() {
         Ok(rules) => rules,
         Err(rule_errors) => {
             for (err, loc) in &rule_errors {
-                eprintln!("{}:{} :: {}", &args[1], loc.line + 2, err);
+                eprintln!("{}:{}:{} {}", &args[1], loc.line + 2, loc.column + 5, err);
             }
             eprintln!(
-                "[ERROR]: {} configuration issues found while parsing rules.",
+                "Rule configuration issues found while parsing: {}",
                 rule_errors.len()
             );
             std::process::exit(1)
