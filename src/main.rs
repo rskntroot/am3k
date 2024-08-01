@@ -54,10 +54,7 @@ fn main() {
 
     let cfg: Configuration = Configuration::new(&args[1], dbg).unwrap();
 
-    // CHECK DEVICES ARE SUPPORTED
-
     info!(dbg, "\nChecking device is supported...");
-
     let deployable_device = match cfg.deployment.platform.as_str() {
         "junos" => match junos::new("generic-device", &cfg.deployment.model) {
             Ok(d) => d,
@@ -97,7 +94,6 @@ fn main() {
     }
 
     info!(dbg, "\nChecking all rules are valid...");
-
     dbug!(dbg, "{:#?}", &cfg.ruleset);
     let validated_rules: Ruleset = match Ruleset::from_vec(&cfg.ruleset) {
         Ok(rules) => rules,
@@ -112,6 +108,11 @@ fn main() {
             std::process::exit(1)
         }
     };
-    dbug!(dbg, "{:#?}", &validated_rules);
+    info!(dbg, "{}", &validated_rules);
     info!(dbg, "Valid rules provided in rules.");
+
+    info!(dbg, "\nExpanding ruleset...");
+    let expanded_rules: Ruleset = validated_rules.expand();
+    info!(dbg, "{}", &expanded_rules);
+    info!(dbg, "Ruleset expanded.");
 }

@@ -63,7 +63,26 @@ Checking interfaces assignments for egress...
 Valid interface assignments for egress.
 
 Checking all rules are valid...
+Ruleset(
+  allow icmp outside any inside (8)
+  deny tcp outside any inside (22)
+  allowlog ip outside any inside (80),(443)
+  denylog udp outside any inside (161,162)
+  deny ip outside any inside any
+)
 Valid rules provided in rules.
+
+Expanding ruleset...
+Ruleset(
+  allow icmp outside any inside 8
+  deny tcp outside any inside 22
+  allowlog ip outside any inside 80
+  allowlog ip outside any inside 443
+  denylog udp outside any inside 161
+  denylog udp outside any inside 162
+  deny ip outside any inside any
+)
+Ruleset expanded.
 ```
 
 ### Invalid Rules

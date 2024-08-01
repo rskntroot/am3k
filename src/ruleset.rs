@@ -158,6 +158,40 @@ impl PortMap {
         }
         Ok((parts[0], parts[1]))
     }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn is_expandable(&self) -> bool {
+        if self.len() > 1 {
+            return true;
+        }
+        for t in self {
+            if t.0 != t.1 {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+impl IntoIterator for PortMap {
+    type Item = (u16, u16);
+    type IntoIter = IntoIter<(u16, u16)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a PortMap {
+    type Item = &'a (u16, u16);
+    type IntoIter = std::slice::Iter<'a, (u16, u16)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
 }
 
 impl fmt::Display for PortMap {
@@ -169,13 +203,13 @@ impl fmt::Display for PortMap {
                 .iter()
                 .map(|&(start, end)| {
                     if start == end {
-                        format!("{}", start)
+                        format!("({})", start)
                     } else {
-                        format!("{}-{}", start, end)
+                        format!("({},{})", start, end)
                     }
                 })
                 .collect::<Vec<String>>()
-                .join(", ")
+                .join(",")
         )
     }
 }
@@ -184,6 +218,20 @@ impl fmt::Display for PortMap {
 pub enum PortType {
     Any,
     Map(PortMap),
+    Port(u16),
+}
+
+impl PortType {
+    fn new() -> Self {
+        PortType::Map(PortMap(vec![(0, 0)]))
+    }
+
+    fn is_expandable(&self) -> bool {
+        if let &PortType::Map(ref map) = &self {
+            return map.is_expandable();
+        }
+        false
+    }
 }
 
 impl FromStr for PortType {
@@ -203,6 +251,7 @@ impl fmt::Display for PortType {
         match self {
             PortType::Any => write!(f, "any"),
             PortType::Map(map) => write!(f, "{}", map),
+            PortType::Port(num) => write!(f, "{}", num),
         }
     }
 }
@@ -215,6 +264,54 @@ pub struct Rule {
     src_port: PortType,
     dst_prefix: String,
     dst_port: PortType,
+}
+
+impl Rule {
+    pub fn expand(&self) -> Vec<Rule> {
+        let mut expanded_rules: Vec<Rule> = vec![];
+
+        if let PortType::Map(ref map) = &self.src_port {
+            let mut rule_clone: Rule = self.clone();
+            if map.is_expandable() {
+                for port_map in map {
+                    if port_map.0 != port_map.1 {
+                        rule_clone.src_port = PortType::Port(port_map.0);
+                        expanded_rules.push(rule_clone.clone());
+                        rule_clone.src_port = PortType::Port(port_map.1);
+                        expanded_rules.push(rule_clone.clone());
+                    } else {
+                        rule_clone.src_port = PortType::Port(port_map.0);
+                        expanded_rules.push(rule_clone.clone())
+                    }
+                }
+            } else {
+                rule_clone.src_port = PortType::Port(map.0[0].0);
+                expanded_rules.push(rule_clone.clone());
+            }
+        } else if let PortType::Map(ref map) = &self.dst_port {
+            let mut rule_clone: Rule = self.clone();
+            if map.is_expandable() {
+                for port_map in map {
+                    if port_map.0 != port_map.1 {
+                        rule_clone.dst_port = PortType::Port(port_map.0);
+                        expanded_rules.push(rule_clone.clone());
+                        rule_clone.dst_port = PortType::Port(port_map.1);
+                        expanded_rules.push(rule_clone.clone());
+                    } else {
+                        rule_clone.dst_port = PortType::Port(port_map.0);
+                        expanded_rules.push(rule_clone.clone())
+                    }
+                }
+            } else {
+                rule_clone.dst_port = PortType::Port(map.0[0].0);
+                expanded_rules.push(rule_clone.clone());
+            }
+        } else {
+            expanded_rules.push(self.clone());
+        }
+
+        expanded_rules
+    }
 }
 
 impl FromStr for Rule {
@@ -280,7 +377,7 @@ impl fmt::Display for Rule {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{}, {}, {}, {}, {}, {}",
+            "{} {} {} {} {} {}",
             self.action,
             self.protocol,
             self.src_prefix,
@@ -370,6 +467,16 @@ impl Ruleset {
 
         Ok(ruleset)
     }
+
+    pub fn expand(self) -> Self {
+        let mut expanded_ruleset: Vec<Rule> = vec![];
+
+        for rule in self {
+            expanded_ruleset.append(&mut rule.expand());
+        }
+
+        Ruleset(expanded_ruleset)
+    }
 }
 
 impl IntoIterator for Ruleset {
@@ -378,6 +485,16 @@ impl IntoIterator for Ruleset {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
+    }
+}
+
+impl fmt::Display for Ruleset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Ruleset(")?;
+        for rule in &self.0 {
+            writeln!(f, "  {}", rule)?;
+        }
+        write!(f, ")")
     }
 }
 
