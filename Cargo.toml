@@ -7,4 +7,6 @@ edition = "2021"
 regex = "1.10.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_yml = "0.0.10"
+serde_json = "1.0.112"
+tera = "1.20.0"
 thiserror = "1.0"

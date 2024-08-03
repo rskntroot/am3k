@@ -3,6 +3,7 @@
 use std::fmt;
 use std::str::FromStr;
 use std::vec::IntoIter;
+use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Clone)]
@@ -21,7 +22,7 @@ pub enum FieldError {
     RuleExpansionUnsupported,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 enum Action {
     Allow,
     Deny,
@@ -55,7 +56,7 @@ impl fmt::Display for Action {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub enum Protocol {
     TCP,
     UDP,
@@ -92,7 +93,7 @@ impl fmt::Display for Protocol {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct PortMap(Vec<(u16, u16)>);
 
 impl PortMap {
@@ -260,6 +261,19 @@ impl FromStr for PortType {
     }
 }
 
+impl Serialize for PortType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PortType::Any => serializer.serialize_str("any"),
+            PortType::Map(map) => map.serialize(serializer),
+            PortType::Port(num) => serializer.serialize_u16(*num),
+        }
+    }
+}
+
 impl fmt::Display for PortType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -270,7 +284,7 @@ impl fmt::Display for PortType {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct Rule {
     action: Action,
     protocol: Protocol,
@@ -425,7 +439,7 @@ impl<'a> IntoIterator for &'a RuleErrors {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct Ruleset(Vec<Rule>);
 
 impl Ruleset {

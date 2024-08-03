@@ -8,6 +8,9 @@ use config::Configuration;
 use log::LogLevel;
 use ruleset::Ruleset;
 use std::env;
+use serde_json::to_value as contextualize;
+// use tera::Context; // NotYetImpld
+// use tera::Tera; // NotYetImpld
 
 pub const HELP_MSG: &str = r#"
 Usage: am3k <config> [OPTIONS]
@@ -47,9 +50,14 @@ fn main() {
     }
 
     let mut dbg = LogLevel::Info;
-    if args.len() == 3 && args[2].contains("d") {
-        dbg = LogLevel::Debug;
-        println!("Debug mode is enabled.");
+    if args.len() == 3 {
+        if args[2].contains("d") {
+            dbg = LogLevel::Debug;
+            println!("Debug mode is enabled.");
+        } else if args[2].contains("v") {
+            dbg = LogLevel::Verbose;
+            println!("Verbose mode is enabled.");
+        }
     }
 
     let cfg: Configuration = Configuration::new(&args[1], dbg).unwrap();
@@ -108,11 +116,18 @@ fn main() {
             std::process::exit(1)
         }
     };
-    info!(dbg, "{}", &validated_rules);
+    verb!(dbg, "{}", &validated_rules);
     info!(dbg, "Valid rules provided in rules.");
 
     info!(dbg, "\nExpanding ruleset...");
     let expanded_rules: Ruleset = validated_rules.expand();
-    info!(dbg, "{}", &expanded_rules);
+    verb!(dbg, "{}", &expanded_rules);
     info!(dbg, "Ruleset expanded.");
+
+    info!(dbg, "\nPacking as JSON for Tera context...");
+    let json: tera::Value = contextualize(&expanded_rules).unwrap();
+    dbug!(dbg, "{}", serde_json::to_string_pretty(&json).unwrap());
+    info!(dbg, "Packing succeeded.");
+
 }
+
