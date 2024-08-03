@@ -1,4 +1,4 @@
-use crate::device::{Device, SupportedPlatform};
+use crate::device::{Device, PlatformUnsupported, SupportedPlatform};
 
 use regex::Regex;
 use std::fmt;
@@ -43,9 +43,6 @@ pub enum SupportedModel {
 }
 
 impl SupportedModel {
-    pub const ERROR_MSG: &'static str = "ModelNotSupported";
-    pub const HELP_MSG: &'static str = "See `Feature Requests` for additional device support";
-
     fn set_ifaces(self) -> Vec<Regex> {
         match self {
             SupportedModel::Qfx5200 => set_qfx5200_ifaces(),
@@ -63,11 +60,7 @@ impl FromStr for SupportedModel {
             "qfx5200" => Ok(SupportedModel::Qfx5200),
             "srx1500" => Ok(SupportedModel::Srx1500),
             "ptx1000" => Ok(SupportedModel::Ptx1000),
-            _ => Err(format!(
-                "{}: {}",
-                SupportedModel::ERROR_MSG,
-                SupportedModel::HELP_MSG
-            )),
+            _ => Err(format!("{}", PlatformUnsupported::ModelNotSupported)),
         }
     }
 }

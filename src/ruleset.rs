@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
+use serde::Serialize;
 use std::fmt;
 use std::str::FromStr;
 use std::vec::IntoIter;
-use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Clone)]

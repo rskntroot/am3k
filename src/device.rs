@@ -1,14 +1,18 @@
 use regex::Regex;
 use std::fmt;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum PlatformUnsupported {
+    #[error("See `Platform Onboarding` for additional platform support")]
+    MakeNotSupported,
+    #[error("See `Device Onboarding` for additional platform support")]
+    ModelNotSupported,
+}
 
 #[derive(Debug)]
 pub enum SupportedPlatform {
     Juniper,
-}
-
-impl SupportedPlatform {
-    pub const ERROR_MSG: &'static str = "DeviceNotSupported";
-    pub const HELP_MSG: &'static str = "See `Feature Requests` for additional platform support";
 }
 
 impl std::str::FromStr for SupportedPlatform {
@@ -17,22 +21,20 @@ impl std::str::FromStr for SupportedPlatform {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "junos" => Ok(SupportedPlatform::Juniper),
-            _ => Err(format!(
-                "{}: {}",
-                SupportedPlatform::ERROR_MSG,
-                SupportedPlatform::HELP_MSG
-            )),
+            _ => Err(format!("{}", PlatformUnsupported::MakeNotSupported)),
         }
     }
 }
 
 impl fmt::Display for SupportedPlatform {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s: &str = match self {
-            SupportedPlatform::Juniper => "junos",
-        };
-
-        write!(f, "{}", s)
+        write!(
+            f,
+            "{}",
+            match self {
+                SupportedPlatform::Juniper => "junos",
+            }
+        )
     }
 }
 

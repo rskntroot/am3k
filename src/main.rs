@@ -7,8 +7,8 @@ mod ruleset;
 use config::Configuration;
 use log::LogLevel;
 use ruleset::Ruleset;
-use std::env;
 use serde_json::to_value as contextualize;
+use std::env;
 // use tera::Context; // NotYetImpld
 // use tera::Tera; // NotYetImpld
 
@@ -62,17 +62,21 @@ fn main() {
 
     let cfg: Configuration = Configuration::new(&args[1], dbg).unwrap();
 
+    // todo address method for determining various devices.
+    // via load supported devices file wtih valid regex at runtime
     info!(dbg, "\nChecking device is supported...");
-    let deployable_device = match cfg.deployment.platform.as_str() {
-        "junos" => match junos::new("generic-device", &cfg.deployment.model) {
-            Ok(d) => d,
-            Err(e) => panic!("{}", e),
-        },
-        _ => panic!(
-            "{}: {}",
-            device::SupportedPlatform::ERROR_MSG,
-            device::SupportedPlatform::HELP_MSG,
-        ),
+    verb!(
+        dbg,
+        "attempting to create device based on platform: {} {}",
+        &cfg.deployment.platform,
+        &cfg.deployment.model
+    );
+    let deployable_device = match junos::new("model-citizen", &cfg.deployment.model) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1)
+        }
     };
     dbug!(dbg, "{}", deployable_device);
     info!(dbg, "Platform and model are supported.");
@@ -124,10 +128,8 @@ fn main() {
     verb!(dbg, "{}", &expanded_rules);
     info!(dbg, "Ruleset expanded.");
 
-    info!(dbg, "\nPacking as JSON for Tera context...");
+    verb!(dbg, "\nPacking as JSON for Tera context...");
     let json: tera::Value = contextualize(&expanded_rules).unwrap();
     dbug!(dbg, "{}", serde_json::to_string_pretty(&json).unwrap());
-    info!(dbg, "Packing succeeded.");
-
+    verb!(dbg, "Packing succeeded.");
 }
-
