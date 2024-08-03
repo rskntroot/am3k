@@ -232,6 +232,20 @@ impl PortType {
         }
         false
     }
+
+    fn get_expansion(&self) -> Option<Vec<u16>> {
+        if let PortType::Map(map) = self {
+            let mut expanded_map: Vec<u16> = vec![];
+            for port_map in map {
+                expanded_map.push(port_map.0);
+                if port_map.0 != port_map.1 {
+                    expanded_map.push(port_map.1);
+                }
+            }
+            return Some(expanded_map);
+        }
+        None
+    }
 }
 
 impl FromStr for PortType {
@@ -270,40 +284,16 @@ impl Rule {
     pub fn expand(&self) -> Vec<Rule> {
         let mut expanded_rules: Vec<Rule> = vec![];
 
-        if let PortType::Map(ref map) = &self.src_port {
+        if let Some(port_expansion) = self.src_port.get_expansion() {
             let mut rule_clone: Rule = self.clone();
-            if map.is_expandable() {
-                for port_map in map {
-                    if port_map.0 != port_map.1 {
-                        rule_clone.src_port = PortType::Port(port_map.0);
-                        expanded_rules.push(rule_clone.clone());
-                        rule_clone.src_port = PortType::Port(port_map.1);
-                        expanded_rules.push(rule_clone.clone());
-                    } else {
-                        rule_clone.src_port = PortType::Port(port_map.0);
-                        expanded_rules.push(rule_clone.clone())
-                    }
-                }
-            } else {
-                rule_clone.src_port = PortType::Port(map.0[0].0);
+            for port in port_expansion {
+                rule_clone.src_port = PortType::Port(port);
                 expanded_rules.push(rule_clone.clone());
             }
-        } else if let PortType::Map(ref map) = &self.dst_port {
+        } else if let Some(port_expansion) = self.dst_port.get_expansion() {
             let mut rule_clone: Rule = self.clone();
-            if map.is_expandable() {
-                for port_map in map {
-                    if port_map.0 != port_map.1 {
-                        rule_clone.dst_port = PortType::Port(port_map.0);
-                        expanded_rules.push(rule_clone.clone());
-                        rule_clone.dst_port = PortType::Port(port_map.1);
-                        expanded_rules.push(rule_clone.clone());
-                    } else {
-                        rule_clone.dst_port = PortType::Port(port_map.0);
-                        expanded_rules.push(rule_clone.clone())
-                    }
-                }
-            } else {
-                rule_clone.dst_port = PortType::Port(map.0[0].0);
+            for port in port_expansion {
+                rule_clone.dst_port = PortType::Port(port);
                 expanded_rules.push(rule_clone.clone());
             }
         } else {
