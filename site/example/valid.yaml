@@ -5,8 +5,9 @@ ruleset:
   - denylog udp outside any inside 161-162
   - deny ip outside any inside any
 deployment:
-  platform: junos
-  model: srx1500
+  platform:
+    make: juniper
+    model: srx1500
   devicelist: [rsk101-example-fw1, rsk101-101-prod-example-fw101]
   ingress:
     interfaces: [ae101, ae102]

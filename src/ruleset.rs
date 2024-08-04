@@ -101,9 +101,8 @@ impl PortMap {
         PortMap(vec![])
     }
 
-    /// - "22" => `Port[(22,22)]`
-    /// - "9000-9010" => `Port[9000,9010)]`
-    /// - "80,443,9000-9010" => `Port[(80,80);(443,443);(9000,9010)]`
+    /// parses a variable port string into range tuples
+    /// - supports u16, range(u16), and list of u16/range(u16)
     fn from_str(s: &str) -> Result<Self, FieldError> {
         match s.parse::<u16>() {
             Ok(n) => Ok(PortMap::from_num(n)),

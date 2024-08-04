@@ -7,8 +7,9 @@ ruleset:
   - allow udp outside any inside 161,,162
   - allow tcp inside 22,*,443,9000-9010 outside any
 deployment:
-  platform: junos
-  model: srx1500
+  platform:
+    make: juniper
+    model: srx1500
   devicelist: [rsk101-example-fw1]
   ingress:
     interfaces: [ae10]

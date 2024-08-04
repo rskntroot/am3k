@@ -45,6 +45,7 @@ macro_rules! verb {
 macro_rules! dbug {
     ($current_level:expr, $($msg:expr),*) => {
         if LogLevel::Debug.value() >= $current_level.value() {
+            print!("[Debug]");
             println!($($msg),*);
         }
     };
@@ -54,7 +55,7 @@ macro_rules! dbug {
 macro_rules! warn {
     ($current_level:expr, $($msg:expr),*) => {
         if LogLevel::Warning.value() >= $current_level.value() {
-            println!($($msg),*);
+            eprintln!($($msg),*);
         }
     };
 }
@@ -63,7 +64,7 @@ macro_rules! warn {
 macro_rules! crit {
     ($current_level:expr, $($msg:expr),*) => {
         if LogLevel::Critical.value() >= $current_level.value() {
-            println!($($msg),*);
+            eprintln!($($msg),*);
         }
     };
 }

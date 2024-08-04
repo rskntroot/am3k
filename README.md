@@ -18,11 +18,15 @@ $ target/release/am3k -h
 Usage: am3k <config> [OPTIONS]
 
 Options:
-  -d, --debug       Enable debug mode for additional logging and diagnostic information.
+  -d, --debug       Enable debug mode for all logging and diagnostic information.
   -h, --help        Print this help message and exit.
+  -v, --verbose     Enable verbose mode for additional logging and diagnostic information.
 
 Arguments:
   <config>          Path to the yaml configuration file.
+
+Environment:
+  AM3K_PLATFORMS_PATH     Path to the directory containing platform definitions. Defaults to "./platform/".
 
 Examples:
   am3k config.yaml
@@ -32,14 +36,8 @@ Description:
   ACL Manager 3000 (am3k) is used to build and manage access control lists via provided configuration file.
   The configuration file should be a YAML file specifying the rules and settings for the ACLs.
 
-  - The <config> argument is mandatory and specifies the path to the configuration file.
-  - Use the debug option to enable debug mode, which provides additional output useful in troubleshooting.
+For more information, visit: [NotYetImpld]
 
-Notes:
-  - Ensure the configuration file is correctly formatted as a YAML file.
-  - The tool will output the resulting ACL to the standard output or to a specified file as configured.
-
-For more information, visit: [[ NotYetImplementedError ]]
 ```
 
 ### Valid Config
@@ -50,26 +48,10 @@ $ target/release/am3k site/example/valid.yaml
 Loading configuration file site/example/valid.yaml...
 Configuration file loaded successfully from yaml.
 
-Checking devicelist naming convention...
-Valid device names per naming convention.
-
-Checking device is supported...
-Platform and model are supported.
-
-Checking interfaces assignments for ingress...
-Valid interface assignments for ingress.
-
-Checking interfaces assignments for egress...
-Valid interface assignments for egress.
+Checking platform is supported...
+Platform is supported.
 
 Checking all rules are valid...
-Ruleset(
-  allow icmp outside any inside (8)
-  deny tcp outside any inside (22)
-  allowlog ip outside any inside (80),(443)
-  denylog udp outside any inside (161,162)
-  deny ip outside any inside any
-)
 Valid rules provided in rules.
 
 Expanding ruleset...
@@ -89,30 +71,38 @@ Ruleset expanded.
 
 ```
 $ target/release/am3k site/example/rules.invalid.yaml
+Verbose mode is enabled.
 
 Loading configuration file site/example/rules.invalid.yaml...
+  Checking devicelist naming convention...
+  Valid device names per naming convention.
 Configuration file loaded successfully from yaml.
 
-Checking devicelist naming convention...
-Valid device names per naming convention.
+Checking platform is supported...
+  Loading path to supported platforms...
+  Found path: ./platform/
 
-Checking device is supported...
-Platform and model are supported.
+  Searching for matching supported platform file...
+  Found ./platform/juniper.yaml
 
-Checking interfaces assignments for ingress...
-Valid interface assignments for ingress.
+  Loading supported platforms file...
+  Platforms file loaded successfully from yaml.
 
-Checking interfaces assignments for egress...
-Valid interface assignments for egress.
+  Checking supported model...
+  Model supported.
+
+  Confirming interfaces are valid...
+  Interfaces are valid
+Platform is supported.
 
 Checking all rules are valid...
-site/example/rules.invalid.yaml:2:11 ProtocolUnsupported: expected 'ip', 'tcp', 'udp', or 'icmp'
-site/example/rules.invalid.yaml:3:5 ActionInvalid: expected 'allow', 'deny', 'allowlog', or 'denylog'
-site/example/rules.invalid.yaml:4:25 PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
-site/example/rules.invalid.yaml:5:36 PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
-site/example/rules.invalid.yaml:6:28 RuleLengthErr: expected 6 fields
-site/example/rules.invalid.yaml:7:34 PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
-site/example/rules.invalid.yaml:8:22 PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:2:11    ProtocolUnsupported: expected 'ip', 'tcp', 'udp', or 'icmp'
+site/example/rules.invalid.yaml:3:5     ActionInvalid: expected 'allow', 'deny', 'allowlog', or 'denylog'
+site/example/rules.invalid.yaml:4:25    PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:5:36    PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:6:28    RuleLengthErr: expected 6 fields
+site/example/rules.invalid.yaml:7:34    PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
+site/example/rules.invalid.yaml:8:22    PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'
 Rule configuration issues found while parsing: 7
 ```
 
@@ -121,17 +111,15 @@ Rule configuration issues found while parsing: 7
 ```
 $ cargo fmt && cargo test
 [...]
-running 22 tests
-test device::tests::device_has_invalid_iface ... ok
+running 19 tests
 test config::tests::device_has_valid_name ... ok
-test config::tests::device_has_invalid_name ... ok
-test device::tests::device_has_valid_iface ... ok
-test ruleset::tests::action_parse_err ... ok
+test device::tests::build_path_errs_on_invalid_iface ... ok
 test ruleset::tests::dst_port_invalid ... ok
 test ruleset::tests::portlist_expansion_invalid ... ok
 test ruleset::tests::portlist_expansion_valid ... ok
 test ruleset::tests::portmap_list_invalid ... ok
 test ruleset::tests::portmap_list_valid ... ok
+test config::tests::device_has_invalid_name ... ok
 test ruleset::tests::portmap_num_invalid ... ok
 test ruleset::tests::portmap_num_valid ... ok
 test ruleset::tests::portmap_range_invalid ... ok
@@ -141,9 +129,10 @@ test ruleset::tests::protocol_parse_err ... ok
 test ruleset::tests::rule_contains_multiple_lists ... ok
 test ruleset::tests::rule_lengths_invalid ... ok
 test ruleset::tests::src_port_invalid ... ok
-test junos::tests::ptx1000_valid_regex ... ok
-test junos::tests::qfx5200_valid_regex ... ok
-test junos::tests::srx1500_valid_regex ... ok
+test ruleset::tests::action_parse_err ... ok
+test device::tests::build_device_succeeds ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
 test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 ```
@@ -152,5 +141,5 @@ test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 
 ```
 $ ls -lh target/release/am3k
--rwxrwxr-x 2 lost lost 3.0M Jul 30 08:20 target/release/am3k
+-rwxrwxr-x 2 whoami whoami 3.1M Aug  4 01:45 target/release/am3k
 ```

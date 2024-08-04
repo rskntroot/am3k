@@ -1,10 +1,10 @@
 mod config;
 mod device;
-mod junos;
 mod log;
 mod ruleset;
 
 use config::Configuration;
+use device::Device;
 use log::LogLevel;
 use ruleset::Ruleset;
 use serde_json::to_value as contextualize;
@@ -16,11 +16,15 @@ pub const HELP_MSG: &str = r#"
 Usage: am3k <config> [OPTIONS]
 
 Options:
-  -d, --debug       Enable debug mode for additional logging and diagnostic information.
+  -d, --debug       Enable debug mode for all logging and diagnostic information.
   -h, --help        Print this help message and exit.
+  -v, --verbose     Enable verbose mode for additional logging and diagnostic information.
 
 Arguments:
   <config>          Path to the yaml configuration file.
+
+Environment:
+  AM3K_PLATFORMS_PATH     Path to the directory containing platform definitions. Defaults to "./platform/".
 
 Examples:
   am3k config.yaml
@@ -30,14 +34,7 @@ Description:
   ACL Manager 3000 (am3k) is used to build and manage access control lists via provided configuration file.
   The configuration file should be a YAML file specifying the rules and settings for the ACLs.
 
-  - The <config> argument is mandatory and specifies the path to the configuration file.
-  - Use the debug option to enable debug mode, which provides additional output useful in troubleshooting.
-
-Notes:
-  - Ensure the configuration file is correctly formatted as a YAML file.
-  - The tool will output the resulting ACL to the standard output or to a specified file as configured.
-
-For more information, visit: [[ NotYetImplementedError ]]
+For more information, visit: [NotYetImpld]
 
 "#;
 
@@ -60,50 +57,30 @@ fn main() {
         }
     }
 
-    let cfg: Configuration = Configuration::new(&args[1], dbg).unwrap();
-
-    // todo address method for determining various devices.
-    // via load supported devices file wtih valid regex at runtime
-    info!(dbg, "\nChecking device is supported...");
-    verb!(
-        dbg,
-        "attempting to create device based on platform: {} {}",
-        &cfg.deployment.platform,
-        &cfg.deployment.model
-    );
-    let deployable_device = match junos::new("model-citizen", &cfg.deployment.model) {
-        Ok(d) => d,
+    let cfg: Configuration = match Configuration::new(&args[1], dbg) {
+        Ok(config) => config,
         Err(e) => {
-            eprintln!("{}", e);
+            crit!(dbg, "{}", e);
             std::process::exit(1)
         }
     };
-    dbug!(dbg, "{}", deployable_device);
-    info!(dbg, "Platform and model are supported.");
 
-    info!(dbg, "\nChecking interfaces assignments for ingress...");
-    match deployable_device.are_valid_ifaces(&cfg.deployment.ingress.interfaces) {
-        Ok(ifaces) => {
-            dbug!(dbg, "{:#?}", ifaces);
-            info!(dbg, "Valid interface assignments for ingress.");
-        }
+    info!(dbg, "\nChecking platform is supported...");
+    let _deployable_device: Device = match Device::build(
+        "model-citizen",
+        &cfg.deployment.platform.make,
+        &cfg.deployment.platform.model,
+        &cfg.deployment.ingress.interfaces,
+        &cfg.deployment.egress.interfaces,
+        dbg,
+    ) {
+        Ok(device) => device,
         Err(e) => {
-            eprintln!("{:#?}", e);
+            crit!(dbg, "{}", e);
             std::process::exit(1)
         }
-    }
-
-    info!(dbg, "\nChecking interfaces assignments for egress...");
-    match deployable_device.are_valid_ifaces(&cfg.deployment.egress.interfaces) {
-        Ok(ifaces) => {
-            dbug!(dbg, "{:#?}", ifaces);
-            info!(dbg, "Valid interface assignments for egress.");
-        }
-        Err(e) => {
-            eprintln!("{:#?}", e);
-            std::process::exit(1)
-        }
-    }
+    };
+    info!(dbg, "Platform is supported.");
 
     info!(dbg, "\nChecking all rules are valid...");
     dbug!(dbg, "{:#?}", &cfg.ruleset);
@@ -111,9 +88,17 @@ fn main() {
         Ok(rules) => rules,
         Err(rule_errors) => {
             for (err, loc) in &rule_errors {
-                eprintln!("{}:{}:{} {}", &args[1], loc.line + 2, loc.column + 5, err);
+                crit!(
+                    dbg,
+                    "{}:{}:{}\t{}",
+                    &args[1],
+                    loc.line + 2,
+                    loc.column + 5,
+                    err
+                );
             }
-            eprintln!(
+            crit!(
+                dbg,
                 "Rule configuration issues found while parsing: {}",
                 rule_errors.len()
             );
@@ -125,7 +110,7 @@ fn main() {
 
     info!(dbg, "\nExpanding ruleset...");
     let expanded_rules: Ruleset = validated_rules.expand();
-    verb!(dbg, "{}", &expanded_rules);
+    info!(dbg, "{}", &expanded_rules);
     info!(dbg, "Ruleset expanded.");
 
     verb!(dbg, "\nPacking as JSON for Tera context...");
