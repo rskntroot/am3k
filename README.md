@@ -133,8 +133,6 @@ test ruleset::tests::action_parse_err ... ok
 test device::tests::build_device_succeeds ... ok
 
 test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
-
-test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 ```
 
 ### Size
