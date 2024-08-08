@@ -1,9 +1,12 @@
 #![allow(dead_code)]
+use crate::{verb, LogLevel};
 
 use serde::Serialize;
-use std::fmt;
+use std::error::Error;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::vec::IntoIter;
+use std::{fmt, fs};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Clone)]
@@ -324,45 +327,48 @@ impl FromStr for Rule {
         let parts: Vec<&str> = s.split_whitespace().collect();
 
         if parts.len() != 6 {
-            return Err((FieldError::RuleLengthErr, Location::new(0, s.len() + 1)));
+            return Err((
+                FieldError::RuleLengthErr,
+                Location::new(String::new(), 0, s.len() + 1),
+            ));
         }
 
         if parts[3].contains(',') && parts[5].contains(',') {
             return Err((
                 FieldError::RuleExpansionUnsupported,
-                Location::new(0, s.len() + 1),
+                Location::new(String::new(), 0, s.len() + 1),
             ));
         }
 
         let mut columns: Vec<usize> = vec![];
         for (i, c) in s.trim().char_indices() {
             if c.is_whitespace() {
-                columns.push(i + 1);
+                columns.push(i + 2);
             }
         }
 
         let action: Action = match Action::from_str(parts[0]) {
             Ok(action) => action,
-            Err(e) => return Err((e, Location::new(0, 0))),
+            Err(e) => return Err((e, Location::new(String::new(), 0, 0))),
         };
 
         let protocol: Protocol = match Protocol::from_str(parts[1]) {
             Ok(protocol) => protocol,
-            Err(e) => return Err((e, Location::new(0, columns[0]))),
+            Err(e) => return Err((e, Location::new(String::new(), 0, columns[0]))),
         };
 
         // placeholder for src_prefix
 
         let src_port: PortType = match PortType::from_str(parts[3]) {
             Ok(protocol) => protocol,
-            Err(e) => return Err((e, Location::new(0, columns[2]))),
+            Err(e) => return Err((e, Location::new(String::new(), 0, columns[2]))),
         };
 
         // placeholder for dst_prefix
 
         let dst_port: PortType = match PortType::from_str(parts[5]) {
             Ok(protocol) => protocol,
-            Err(e) => return Err((e, Location::new(0, columns[4]))),
+            Err(e) => return Err((e, Location::new(String::new(), 0, columns[4]))),
         };
 
         Ok(Rule {
@@ -391,19 +397,20 @@ impl fmt::Display for Rule {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Location {
+    pub path: String,
     pub line: usize,
     pub column: usize,
 }
 
 impl Location {
-    fn new(line: usize, column: usize) -> Self {
-        Location { line, column }
+    fn new(path: String, line: usize, column: usize) -> Self {
+        Location { path, line, column }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RuleErrors(Vec<(FieldError, Location)>);
 
 impl RuleErrors {
@@ -417,6 +424,12 @@ impl RuleErrors {
 
     pub fn push(&mut self, error: FieldError, loc: Location) {
         self.0.push((error, loc));
+    }
+
+    pub fn update_paths(&mut self, path: &str) {
+        for (_, loc) in self.0.iter_mut() {
+            loc.path = path.to_string();
+        }
     }
 }
 
@@ -438,12 +451,55 @@ impl<'a> IntoIterator for &'a RuleErrors {
     }
 }
 
+impl<'a> IntoIterator for &'a mut RuleErrors {
+    type Item = &'a mut (FieldError, Location);
+    type IntoIter = std::slice::IterMut<'a, (FieldError, Location)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter_mut()
+    }
+}
+
+impl fmt::Display for RuleErrors {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut errors = String::new();
+        for (e, loc) in &self.0 {
+            errors.push_str(&format!(
+                "{}:{}:{}\t{}\n",
+                loc.path, loc.line, loc.column, e,
+            ));
+        }
+        write!(f, "{}", errors)
+    }
+}
+
+impl Error for RuleErrors {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct Ruleset(Vec<Rule>);
 
 impl Ruleset {
-    pub fn new() -> Self {
-        Ruleset(Vec::new())
+    pub fn new(acls_path: &str, dbg: LogLevel) -> Result<Self, Box<dyn std::error::Error>> {
+        verb!(dbg, "  Loading ruleset file: {}", acls_path);
+        let rs_file: &Vec<String> = &fs::read_to_string(PathBuf::from(acls_path))?
+            .lines()
+            .map(String::from)
+            .collect();
+
+        let rs: Ruleset = match Self::from_vec(rs_file) {
+            Ok(ruleset) => ruleset,
+            Err(mut e) => {
+                e.update_paths(acls_path);
+                return Err(Box::new(e));
+            }
+        };
+        verb!(dbg, "  Ruleset file loaded successfully from yaml.");
+
+        Ok(rs.expand())
     }
 
     pub fn push(&mut self, rule: Rule) {
@@ -451,15 +507,16 @@ impl Ruleset {
     }
 
     /// parses rules from vec of strings to validated rules that may require expansion
-    pub fn from_vec(raw_rules: &Vec<String>) -> Result<Self, RuleErrors> {
-        let mut ruleset: Ruleset = Ruleset::new();
+    fn from_vec(raw_rules: &Vec<String>) -> Result<Self, RuleErrors> {
+        let mut ruleset: Ruleset = Ruleset(Vec::new());
         let mut errors: RuleErrors = RuleErrors::new();
 
         for (i, rule) in raw_rules.iter().enumerate() {
             match Rule::from_str(rule) {
                 Ok(r) => ruleset.push(r),
-                Err((e, l)) => {
-                    errors.push(e, Location::new(i, l.column));
+                Err((e, mut loc)) => {
+                    loc.line = i + 1;
+                    errors.push(e, loc)
                 }
             };
         }
@@ -471,14 +528,8 @@ impl Ruleset {
         Ok(ruleset)
     }
 
-    pub fn expand(self) -> Self {
-        let mut expanded_ruleset: Vec<Rule> = vec![];
-
-        for rule in self {
-            expanded_ruleset.append(&mut rule.expand());
-        }
-
-        Ruleset(expanded_ruleset)
+    fn expand(self) -> Self {
+        Ruleset(self.into_iter().flat_map(|rule| rule.expand()).collect())
     }
 }
 

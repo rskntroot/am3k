@@ -1,0 +1,5 @@
+allow icmp outside any inside 8
+deny tcp outside any inside 22
+allowlog ip outside any inside 80,443
+denylog udp outside any inside 161-162
+deny ip outside any inside any

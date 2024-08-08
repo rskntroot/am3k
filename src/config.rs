@@ -1,4 +1,4 @@
-use crate::{crit, dbug, info, verb, LogLevel};
+use crate::{crit, dbug, verb, LogLevel};
 use regex::Regex;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
@@ -6,32 +6,46 @@ use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
 pub struct Configuration {
-    pub ruleset: Vec<String>,
     pub deployment: Deployment,
     pub defaults: Defaults,
 }
 
 impl Configuration {
-    /// loads an acl configuration from yaml and checks devices are valid
-    pub fn new(file_path: &str, dbg: LogLevel) -> Result<Self, Box<dyn std::error::Error>> {
-        info!(dbg, "\nLoading configuration file {}...", file_path);
+    /// - loads an acl configuration from yaml
+    /// - checks devices are valid
+    /// - checks
+    pub fn new(
+        file_path: &str,
+        acls_path: &str,
+        dbg: LogLevel,
+    ) -> Result<Option<Self>, Box<dyn std::error::Error>> {
+        let mut valid_config: bool = true;
         let cfg: Configuration =
             serde_yml::from_str(&fs::read_to_string(PathBuf::from(file_path))?)?;
+        dbug!(dbg, "{:#?}", cfg);
 
         verb!(dbg, "  Checking devicelist naming convention...");
-        let pattern: Regex = Regex::new(&cfg.defaults.device_regex.to_string())?;
-        if device_names_are_complaint(&cfg.deployment.devicelist, pattern, dbg)? {
-            verb!(dbg, "  Valid device names per naming convention.")
-        };
-        dbug!(dbg, "{:#?}", cfg);
-        info!(dbg, "Configuration file loaded successfully from yaml.");
+        match are_names_complaint(&cfg.deployment.devicelist, &cfg.defaults.device_regex, dbg) {
+            true => verb!(dbg, "  Devices matched convention."),
+            false => valid_config = false,
+        }
 
-        Ok(cfg)
+        verb!(dbg, "\n  Checking ruleset files exist...");
+        match do_rulesets_exist(&cfg.deployment.rulesets, &acls_path, dbg) {
+            true => verb!(dbg, "  Ruleset files exist."),
+            false => valid_config = false,
+        }
+
+        match valid_config {
+            true => Ok(Some(cfg)),
+            false => Ok(None),
+        }
     }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Deployment {
+    pub rulesets: Vec<String>,
     pub platform: Platform,
     pub devicelist: Vec<String>,
     pub ingress: Direction,
@@ -71,39 +85,66 @@ pub struct Transforms {
 
 #[derive(Debug, Deserialize)]
 pub struct Defaults {
-    pub device_regex: String,
+    #[serde(with = "regex_serde")]
+    pub device_regex: Regex,
 }
 
 #[derive(Debug, Error)]
 pub enum ConfigInvalid {
-    #[error("DeviceNamesInvalid: failed to match provided regular expression.")]
+    #[error("DeviceNamesInvalid: failed to match provided regular expression")]
     DeviceNamesInvalid,
+    #[error("RulesetFileDNE: failed to find matching ruleset file")]
+    RulesetFileDNE,
+    #[error(
+        "FailedPostChecks: Loaded, but failed on DeviceNamesInvalid and/or RulesetFileDoesNotExist"
+    )]
+    FailedPostChecks,
 }
 
 /// regex lookup for devices against provided pattern
-fn device_names_are_complaint(
-    devicelist: &Vec<String>,
-    pattern: Regex,
-    dbg: LogLevel,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    let mut invalid_name_detected = false;
+fn are_names_complaint(devicelist: &Vec<String>, pattern: &Regex, dbg: LogLevel) -> bool {
+    let mut name_valid = true;
     for device in devicelist {
         if !pattern.is_match(&device) {
-            crit!(
-                dbg,
-                "{} on device {}",
-                ConfigInvalid::DeviceNamesInvalid,
-                &device
-            );
-            invalid_name_detected = true;
+            crit!(dbg, "* {}: {}", ConfigInvalid::DeviceNamesInvalid, &device);
+            name_valid = false;
         };
     }
+    name_valid
+}
 
-    if invalid_name_detected {
-        return Err(Box::new(ConfigInvalid::DeviceNamesInvalid));
+/// pathbuf check on all rulesets
+fn do_rulesets_exist(files: &Vec<String>, acls_path: &str, dbg: LogLevel) -> bool {
+    let mut files_exist: bool = true;
+    for file in files {
+        if !PathBuf::from(format!("{acls_path}/{file}.acl")).exists() {
+            crit!(dbg, "* {}: {}", ConfigInvalid::RulesetFileDNE, file);
+            files_exist = false;
+        }
+    }
+    files_exist
+}
+
+mod regex_serde {
+    #![allow(dead_code)]
+    use regex::Regex;
+    use serde::{de, Deserialize, Deserializer, Serializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Regex, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        Regex::new(&s)
+            .map_err(|e| de::Error::custom(format!("Invalid regular expression pattern: {}", e)))
     }
 
-    Ok(true)
+    pub fn serialize<S>(pattern: Regex, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(pattern.as_str())
+    }
 }
 
 #[cfg(test)]
@@ -119,7 +160,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(device_names_are_complaint(&devicelist, pattern, dbg).unwrap());
+        assert!(are_names_complaint(&devicelist, &pattern, dbg));
     }
 
     #[test]
@@ -131,11 +172,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            device_names_are_complaint(&devicelist, pattern, dbg)
-                .unwrap_err()
-                .to_string(),
-            ConfigInvalid::DeviceNamesInvalid.to_string()
-        );
+        assert_eq!(are_names_complaint(&devicelist, &pattern, dbg), false);
     }
 }

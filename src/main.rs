@@ -24,7 +24,8 @@ Arguments:
   <config>          Path to the yaml configuration file.
 
 Environment:
-  AM3K_PLATFORMS_PATH     Path to the directory containing platform definitions. Defaults to "./platform/".
+  AM3K_PLATFORMS_PATH     Path to the directory containing platform definitions. Defaults to "./platform".
+  AM3K_ACL_PATH           Path to the directory containing ACL definitions. Defaults to "./acls".
 
 Examples:
   am3k config.yaml
@@ -57,16 +58,31 @@ fn main() {
         }
     }
 
-    let cfg: Configuration = match Configuration::new(&args[1], dbg) {
-        Ok(config) => config,
+    let acls_path: String = match std::env::var("AM3K_PLATFORMS_PATH") {
+        Ok(path) => path.trim_end_matches('/').to_string(),
+        Err(_) => String::from("./acls"),
+    };
+
+    // configuration is mandatory
+    info!(dbg, "\nLoading configuration file {}...", &args[1]);
+    let cfg: Configuration = match Configuration::new(&args[1], &acls_path, dbg) {
+        Ok(Some(config)) => config,
         Err(e) => {
             crit!(dbg, "{}", e);
             std::process::exit(1)
         }
+        Ok(None) => {
+            crit!(dbg, "{}", config::ConfigInvalid::FailedPostChecks);
+            std::process::exit(2)
+        }
     };
+    info!(dbg, "Configuration file loaded successfully from yaml.");
 
+    let mut buildable: bool = true;
+
+    // build an optional device
     info!(dbg, "\nChecking platform is supported...");
-    let _deployable_device: Device = match Device::build(
+    let _deployable_device: Option<Device> = match Device::build(
         "model-citizen",
         &cfg.deployment.platform.make,
         &cfg.deployment.platform.model,
@@ -74,47 +90,51 @@ fn main() {
         &cfg.deployment.egress.interfaces,
         dbg,
     ) {
-        Ok(device) => device,
+        Ok(device) => Some(device),
         Err(e) => {
             crit!(dbg, "{}", e);
-            std::process::exit(1)
+            buildable = false;
+            None
         }
     };
-    info!(dbg, "Platform is supported.");
+    match buildable {
+        true => info!(dbg, "Platform is supported."),
+        false => info!(dbg, "Platform is not supported."),
+    }
 
-    info!(dbg, "\nChecking all rules are valid...");
-    dbug!(dbg, "{:#?}", &cfg.ruleset);
-    let validated_rules: Ruleset = match Ruleset::from_vec(&cfg.ruleset) {
-        Ok(rules) => rules,
-        Err(rule_errors) => {
-            for (err, loc) in &rule_errors {
-                crit!(
-                    dbg,
-                    "{}:{}:{}\t{}",
-                    &args[1],
-                    loc.line + 2,
-                    loc.column + 5,
-                    err
-                );
+    // build a vec of optional rulesets
+    info!(dbg, "\nLoading rulesets...");
+    dbug!(dbg, "{:#?}", &cfg.deployment.rulesets);
+    let mut validated_rulesets: Vec<Option<Ruleset>> = vec![];
+    for ruleset in &cfg.deployment.rulesets {
+        let acls_path = format!("{}/{}.acl", &acls_path, ruleset);
+        match Ruleset::new(&acls_path, dbg) {
+            Ok(ruleset) => {
+                verb!(dbg, "{}", &ruleset.to_string());
+                validated_rulesets.push(Some(ruleset))
             }
-            crit!(
-                dbg,
-                "Rule configuration issues found while parsing: {}",
-                rule_errors.len()
-            );
-            std::process::exit(1)
+            Err(e) => {
+                crit!(dbg, "* Ruleset issues found while parsing:\n{}", e);
+                buildable = false;
+                validated_rulesets.push(None);
+            }
         }
-    };
-    verb!(dbg, "{}", &validated_rules);
-    info!(dbg, "Valid rules provided in rules.");
+    }
+    match buildable {
+        true => info!(dbg, "Valid rules provided in rulesets."),
+        false => info!(dbg, "Invalid rules provided in rulesets."),
+    }
 
-    info!(dbg, "\nExpanding ruleset...");
-    let expanded_rules: Ruleset = validated_rules.expand();
-    info!(dbg, "{}", &expanded_rules);
-    info!(dbg, "Ruleset expanded.");
+    if !buildable {
+        crit!(
+            dbg,
+            "Unable to generate output with provided configuration and rulesets."
+        );
+        std::process::exit(3);
+    }
 
     verb!(dbg, "\nPacking as JSON for Tera context...");
-    let json: tera::Value = contextualize(&expanded_rules).unwrap();
+    let json: tera::Value = contextualize(&validated_rulesets).unwrap();
     dbug!(dbg, "{}", serde_json::to_string_pretty(&json).unwrap());
     verb!(dbg, "Packing succeeded.");
 }

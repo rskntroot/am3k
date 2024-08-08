@@ -1,28 +1,3 @@
-mod regex_serde {
-    #![allow(dead_code)]
-    use regex::Regex;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Regex>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let strings: Vec<String> = Deserialize::deserialize(deserializer)?;
-        strings
-            .into_iter()
-            .map(|s| Regex::new(&s).map_err(serde::de::Error::custom))
-            .collect()
-    }
-
-    pub fn serialize<S>(regexes: &[Regex], serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let strings: Vec<String> = regexes.iter().map(|r| r.as_str().to_owned()).collect();
-        strings.serialize(serializer)
-    }
-}
-
 use crate::{crit, dbug, verb, LogLevel};
 use regex::Regex;
 use serde::Deserialize;
@@ -102,8 +77,8 @@ impl Device {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         verb!(dbg, "  Loading path to supported platforms...");
         let dir: PathBuf = match std::env::var("AM3K_PLATFORMS_PATH") {
-            Ok(val) => PathBuf::from(val),
-            Err(_) => PathBuf::from("./platform/"),
+            Ok(path) => PathBuf::from(path.trim_end_matches('/').to_string()),
+            Err(_) => PathBuf::from("./platform"),
         };
         verb!(dbg, "  Found path: {}", &dir.display());
 
@@ -273,6 +248,31 @@ fn contains_yaml_files(path: &PathBuf) -> Result<Option<Vec<String>>, Box<dyn st
             })
             .collect(),
     ))
+}
+
+mod regex_serde {
+    #![allow(dead_code)]
+    use regex::Regex;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Regex>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let strings: Vec<String> = Deserialize::deserialize(deserializer)?;
+        strings
+            .into_iter()
+            .map(|s| Regex::new(&s).map_err(serde::de::Error::custom))
+            .collect()
+    }
+
+    pub fn serialize<S>(regexes: &[Regex], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let strings: Vec<String> = regexes.iter().map(|r| r.as_str().to_owned()).collect();
+        strings.serialize(serializer)
+    }
 }
 
 #[cfg(test)]
