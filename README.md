@@ -153,5 +153,5 @@ test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 
 ```
 $ ls -lh target/release/am3k
--rwxrwxr-x 2 whoami whoami 8.1M Aug 10 23:10 target/release/am3k
+-rwxrwxr-x 2 whoami whoami 6.5M Aug 10 23:33 target/release/am3k 
 ```
