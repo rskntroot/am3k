@@ -1,10 +1,10 @@
 use crate::{crit, dbug, verb, LogLevel};
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use thiserror::Error;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Configuration {
     pub deployment: Deployment,
     pub defaults: Defaults,
@@ -43,7 +43,7 @@ impl Configuration {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Deployment {
     pub rulesets: Vec<String>,
     pub platform: Platform,
@@ -52,14 +52,14 @@ pub struct Deployment {
     pub egress: Direction,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Platform {
     pub make: String,
     pub model: String,
 }
 
 #[allow(dead_code)] // todo
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Direction {
     pub interfaces: Vec<String>,
     pub filters: Filters,
@@ -70,20 +70,20 @@ pub struct Direction {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Filters {
     pub src: Vec<String>,
     pub dst: Vec<String>,
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Transforms {
     pub src: bool,
     pub dst: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Defaults {
     #[serde(with = "regex_serde")]
     pub device_regex: Regex,
@@ -139,7 +139,7 @@ mod regex_serde {
             .map_err(|e| de::Error::custom(format!("Invalid regular expression pattern: {}", e)))
     }
 
-    pub fn serialize<S>(pattern: Regex, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(pattern: &Regex, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {

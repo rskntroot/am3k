@@ -26,7 +26,7 @@ pub enum FieldError {
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize)]
-enum Action {
+pub enum Action {
     Allow,
     Deny,
     AllowLog,

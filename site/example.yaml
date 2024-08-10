@@ -1,9 +1,9 @@
 deployment:
-  rulesets: [valid.example, invalid.example]
+  rulesets: [valid.example]
   platform:
     make: juniper
     model: srx1500
-  devicelist: [rsk101-example-fw1, rsk101-101-prod-example-fw101]
+  devicelist: [rsk101-ext-fw1, rsk101-ext-fw2, rsk101-ext-fw3, rsk101-ext-fw4]
   ingress:
     interfaces: [ae101, ae102]
     filters:

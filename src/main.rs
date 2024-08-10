@@ -9,8 +9,7 @@ use log::LogLevel;
 use ruleset::Ruleset;
 use serde_json::to_value as contextualize;
 use std::env;
-// use tera::Context; // NotYetImpld
-// use tera::Tera; // NotYetImpld
+use tera::Tera;
 
 pub const HELP_MSG: &str = r#"
 Usage: am3k <config> [OPTIONS]
@@ -133,8 +132,32 @@ fn main() {
         std::process::exit(3);
     }
 
-    verb!(dbg, "\nPacking as JSON for Tera context...");
-    let json: tera::Value = contextualize(&validated_rulesets).unwrap();
-    dbug!(dbg, "{}", serde_json::to_string_pretty(&json).unwrap());
+    verb!(dbg, "\nPacking Tera context...");
+    let mut context = tera::Context::new();
+    context.insert("rulesets", &contextualize(&validated_rulesets).unwrap());
+    context.insert("device", &contextualize(&_deployable_device).unwrap());
+    context.insert("config", &contextualize(&cfg).unwrap());
+    if dbg.value() <= LogLevel::Debug.value() {
+        dbg!(&context);
+    }
     verb!(dbg, "Packing succeeded.");
+
+    let tera = match Tera::new("tmpl/**/*") {
+        Ok(t) => t,
+        Err(e) => {
+            crit!(dbg, "{}", e);
+            std::process::exit(4)
+        }
+    };
+
+    // output rendered tera using tmpl/ruleset.tera
+    let rendered = match tera.render("ruleset.tera", &context) {
+        Ok(render) => render,
+        Err(e) => {
+            crit!(dbg, "{}", e);
+            std::process::exit(5)
+        }
+    };
+
+    info!(dbg, "\n{}", rendered);
 }

@@ -1,0 +1,21 @@
+{%- for new_device in config.deployment.devicelist %}
+{{ new_device }}:
+  type: {{ device.make }}
+  desc: {{ device.model }}
+  interfaces: [ {% for interfaces in [device.paths.ingress, device.paths.egress] %}
+  {%- for interface in interfaces %}
+      {{- interface }}, {% endfor %}
+{%- endfor %}]
+  egress:
+    interfaces: {{ device.paths.egress }}
+    ruleset: {{ config.deployment.rulesets }}
+    filters:
+      dst: {{ config.deployment.egress.filters.dst }}
+      src: {{ config.deployment.egress.filters.src }}
+  ingress:
+    interfaces: {{ device.paths.ingress }}
+    ruleset: {{ config.deployment.rulesets}}
+    filters:
+      dst: {{ config.deployment.ingress.filters.dst }}
+      src: {{ config.deployment.ingress.filters.src }}
+{% endfor %}

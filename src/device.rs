@@ -1,6 +1,6 @@
 use crate::{crit, dbug, verb, LogLevel};
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{fmt, fs, path::PathBuf};
 use thiserror::Error;
 
@@ -16,19 +16,6 @@ pub enum PlatformUnsupported {
 pub enum InterfaceErrors {
     #[error("InvalidPortAssignment: interfaces do not exist on provided platform")]
     InvalidPortAssignment,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Models {
-    pub name: String,
-    #[serde(with = "regex_serde")]
-    pub ifaces: Vec<Regex>,
-}
-
-impl fmt::Display for Models {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {}\nifaces: {:?}", self.name, self.ifaces)
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,13 +39,26 @@ impl SupportedPlatform {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Models {
+    pub name: String,
+    #[serde(with = "regex_serde")]
+    pub ifaces: Vec<Regex>,
+}
+
+impl fmt::Display for Models {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "name: {}\nifaces: {:?}", self.name, self.ifaces)
+    }
+}
+
 impl fmt::Display for SupportedPlatform {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:\n{:#?}", self.make, self.models)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Device {
     pub name: String,
     pub make: String,
@@ -135,7 +135,7 @@ impl fmt::Display for Device {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Paths {
     pub ingress: Vec<String>,
     pub egress: Vec<String>,
