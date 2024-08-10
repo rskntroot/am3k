@@ -4,20 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, fs, path::PathBuf};
 use thiserror::Error;
 
-#[derive(Debug, Error)]
-pub enum PlatformUnsupported {
-    #[error("MakeNotSupported: see `Platform Onboarding` for more information")]
-    MakeNotSupported,
-    #[error("ModelNotSupported: see `Device Onboarding` for more information")]
-    ModelNotSupported,
-}
-
-#[derive(Debug, Error)]
-pub enum InterfaceErrors {
-    #[error("InvalidPortAssignment: interfaces do not exist on provided platform")]
-    InvalidPortAssignment,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct SupportedPlatform {
     pub make: String,
@@ -35,20 +21,7 @@ impl SupportedPlatform {
         self.models
             .iter()
             .find(|model| model.name == model_name)
-            .map(|model| &model.ifaces)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Models {
-    pub name: String,
-    #[serde(with = "regex_serde")]
-    pub ifaces: Vec<Regex>,
-}
-
-impl fmt::Display for Models {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {}\nifaces: {:?}", self.name, self.ifaces)
+            .map(|model| &model.interfaces)
     }
 }
 
@@ -56,6 +29,27 @@ impl fmt::Display for SupportedPlatform {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:\n{:#?}", self.make, self.models)
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Models {
+    pub name: String,
+    #[serde(with = "regex_serde")]
+    pub interfaces: Vec<Regex>,
+}
+
+impl fmt::Display for Models {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "name: {}\nifaces: {:?}", self.name, self.interfaces)
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum PlatformUnsupported {
+    #[error("MakeNotSupported: see `Platform Onboarding` for more information")]
+    MakeNotSupported,
+    #[error("ModelNotSupported: see `Device Onboarding` for more information")]
+    ModelNotSupported,
 }
 
 #[derive(Debug, Serialize)]
@@ -73,13 +67,11 @@ impl Device {
         model: &str,
         ingress: &Vec<String>,
         egress: &Vec<String>,
+        platforms_path: &str,
         dbg: LogLevel,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         verb!(dbg, "  Loading path to supported platforms...");
-        let dir: PathBuf = match std::env::var("AM3K_PLATFORMS_PATH") {
-            Ok(path) => PathBuf::from(path.trim_end_matches('/').to_string()),
-            Err(_) => PathBuf::from("./platform"),
-        };
+        let dir = PathBuf::from(platforms_path);
         verb!(dbg, "  Found path: {}", &dir.display());
 
         verb!(dbg, "\n  Searching for matching supported platform file...");
@@ -135,7 +127,7 @@ impl fmt::Display for Device {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Paths {
     pub ingress: Vec<String>,
     pub egress: Vec<String>,
@@ -250,6 +242,12 @@ fn contains_yaml_files(path: &PathBuf) -> Result<Option<Vec<String>>, Box<dyn st
     ))
 }
 
+#[derive(Debug, Error)]
+pub enum InterfaceErrors {
+    #[error("InvalidPortAssignment: interfaces do not exist on provided platform")]
+    InvalidPortAssignment,
+}
+
 mod regex_serde {
     #![allow(dead_code)]
     use regex::Regex;
@@ -284,7 +282,15 @@ mod tests {
     fn build_device_succeeds() {
         let ports = vec!["xe-0/0/0".to_string(), "xe-0/0/1".to_string()];
         let dbg = crate::LogLevel::Debug;
-        let _ = Device::build("test-device", "juniper", "srx1500", &ports, &ports, dbg);
+        let _ = Device::build(
+            "test-device",
+            "juniper",
+            "srx1500",
+            &ports,
+            &ports,
+            "./platforms",
+            dbg,
+        );
     }
 
     #[test]

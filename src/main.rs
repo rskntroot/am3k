@@ -1,3 +1,4 @@
+mod cli;
 mod config;
 mod device;
 mod log;
@@ -8,63 +9,15 @@ use device::Device;
 use log::LogLevel;
 use ruleset::Ruleset;
 use serde_json::to_value as contextualize;
-use std::env;
 use tera::Tera;
 
-pub const HELP_MSG: &str = r#"
-Usage: am3k <config> [OPTIONS]
-
-Options:
-  -d, --debug       Enable debug mode for all logging and diagnostic information.
-  -h, --help        Print this help message and exit.
-  -v, --verbose     Enable verbose mode for additional logging and diagnostic information.
-
-Arguments:
-  <config>          Path to the yaml configuration file.
-
-Environment:
-  AM3K_PLATFORMS_PATH     Path to the directory containing platform definitions. Defaults to "./platform".
-  AM3K_ACL_PATH           Path to the directory containing ACL definitions. Defaults to "./acls".
-
-Examples:
-  am3k config.yaml
-  am3k config.yaml -d
-
-Description:
-  ACL Manager 3000 (am3k) is used to build and manage access control lists via provided configuration file.
-  The configuration file should be a YAML file specifying the rules and settings for the ACLs.
-
-For more information, visit: [NotYetImpld]
-
-"#;
-
 fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() < 2 || ["-h", "--help"].contains(&args[1].as_str()) {
-        println!("{}", HELP_MSG);
-        return;
-    }
-
-    let mut dbg = LogLevel::Info;
-    if args.len() == 3 {
-        if args[2].contains("d") {
-            dbg = LogLevel::Debug;
-            println!("Debug mode is enabled.");
-        } else if args[2].contains("v") {
-            dbg = LogLevel::Verbose;
-            println!("Verbose mode is enabled.");
-        }
-    }
-
-    let acls_path: String = match std::env::var("AM3K_PLATFORMS_PATH") {
-        Ok(path) => path.trim_end_matches('/').to_string(),
-        Err(_) => String::from("./acls"),
-    };
+    let args: cli::Args = cli::parse_args();
+    let dbg: LogLevel = args.loglevel;
 
     // configuration is mandatory
-    info!(dbg, "\nLoading configuration file {}...", &args[1]);
-    let cfg: Configuration = match Configuration::new(&args[1], &acls_path, dbg) {
+    info!(dbg, "\nLoading configuration file {}...", &args.config);
+    let cfg: Configuration = match Configuration::load(&args.config, &args.env.rulesets, dbg) {
         Ok(Some(config)) => config,
         Err(e) => {
             crit!(dbg, "{}", e);
@@ -87,6 +40,7 @@ fn main() {
         &cfg.deployment.platform.model,
         &cfg.deployment.ingress.interfaces,
         &cfg.deployment.egress.interfaces,
+        &args.env.platforms,
         dbg,
     ) {
         Ok(device) => Some(device),
@@ -106,8 +60,8 @@ fn main() {
     dbug!(dbg, "{:#?}", &cfg.deployment.rulesets);
     let mut validated_rulesets: Vec<Option<Ruleset>> = vec![];
     for ruleset in &cfg.deployment.rulesets {
-        let acls_path = format!("{}/{}.acl", &acls_path, ruleset);
-        match Ruleset::new(&acls_path, dbg) {
+        let acls_path = format!("{}/{}.acl", &args.env.rulesets, ruleset);
+        match Ruleset::load(&acls_path, dbg) {
             Ok(ruleset) => {
                 verb!(dbg, "{}", &ruleset.to_string());
                 validated_rulesets.push(Some(ruleset))

@@ -11,10 +11,9 @@ pub struct Configuration {
 }
 
 impl Configuration {
-    /// - loads an acl configuration from yaml
-    /// - checks devices are valid
-    /// - checks
-    pub fn new(
+    /// loads a site configuration yaml
+    /// - checks `are_names_complaint` & `do_rulesets_exist`
+    pub fn load(
         file_path: &str,
         acls_path: &str,
         dbg: LogLevel,
@@ -58,7 +57,6 @@ pub struct Platform {
     pub model: String,
 }
 
-#[allow(dead_code)] // todo
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Direction {
     pub interfaces: Vec<String>,
@@ -113,7 +111,7 @@ fn are_names_complaint(devicelist: &Vec<String>, pattern: &Regex, dbg: LogLevel)
     name_valid
 }
 
-/// pathbuf check on all rulesets
+/// pathbuf exists check for all rulesets
 fn do_rulesets_exist(files: &Vec<String>, acls_path: &str, dbg: LogLevel) -> bool {
     let mut files_exist: bool = true;
     for file in files {
