@@ -2,31 +2,195 @@
 use crate::{verb, LogLevel};
 
 use serde::Serialize;
-use std::error::Error;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::vec::IntoIter;
-use std::{fmt, fs};
+use std::{error::Error, fmt, path::PathBuf, str::FromStr, vec::IntoIter};
 use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq, Clone)]
-pub enum FieldError {
-    #[error("ActionInvalid: expected 'allow', 'deny', 'allowlog', or 'denylog'")]
-    ActionInvalid,
-    #[error("ProtocolUnsupported: expected 'ip', 'tcp', 'udp', or 'icmp'")]
-    ProtocolUnsupported,
-    #[error("PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'")]
-    PortInvalid,
-    #[error("PortOrderInvalid: port range start must be less than port range end")]
-    PortOrderInvalid,
-    #[error("RuleLengthErr: expected 6 fields")]
-    RuleLengthErr,
-    #[error("RuleExpansionUnsupported: both src & dst ports cannot be port lists")]
-    RuleExpansionUnsupported,
+#[derive(Debug, PartialEq, Clone, Serialize)]
+pub struct Ruleset(Vec<Rule>);
+
+impl Ruleset {
+    pub fn load(acls_path: &str, dbg: LogLevel) -> Result<Self, Box<dyn std::error::Error>> {
+        verb!(dbg, "  Loading ruleset file: {}", acls_path);
+        let rs_file: &Vec<String> = &std::fs::read_to_string(PathBuf::from(acls_path))?
+            .lines()
+            .map(String::from)
+            .collect();
+
+        let rs: Ruleset = match Self::from_vec(rs_file) {
+            Ok(ruleset) => ruleset,
+            Err(mut e) => {
+                e.update_paths(acls_path);
+                return Err(Box::new(e));
+            }
+        };
+        verb!(dbg, "  Ruleset file loaded successfully from yaml.");
+
+        Ok(rs.expand())
+    }
+
+    pub fn push(&mut self, rule: Rule) {
+        self.0.push(rule);
+    }
+
+    /// parses rules from vec of strings to validated rules that may require expansion
+    fn from_vec(raw_rules: &Vec<String>) -> Result<Self, RuleErrors> {
+        let mut ruleset: Ruleset = Ruleset(Vec::new());
+        let mut errors: RuleErrors = RuleErrors::new();
+
+        for (i, rule) in raw_rules.iter().enumerate() {
+            match Rule::from_str(rule) {
+                Ok(r) => ruleset.push(r),
+                Err((e, mut loc)) => {
+                    loc.line = i + 1;
+                    errors.push(e, loc)
+                }
+            };
+        }
+
+        if errors.len() > 0 {
+            return Err(errors);
+        }
+
+        Ok(ruleset)
+    }
+
+    fn expand(self) -> Self {
+        Ruleset(self.into_iter().flat_map(|rule| rule.expand()).collect())
+    }
+}
+
+impl IntoIterator for Ruleset {
+    type Item = Rule;
+    type IntoIter = IntoIter<Rule>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl fmt::Display for Ruleset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Ruleset(")?;
+        for rule in &self.0 {
+            writeln!(f, "  {}", rule)?;
+        }
+        write!(f, ")")
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize)]
-enum Action {
+pub struct Rule {
+    action: Action,
+    protocol: Protocol,
+    src_prefix: String,
+    src_port: PortType,
+    dst_prefix: String,
+    dst_port: PortType,
+}
+
+impl Rule {
+    pub fn expand(&self) -> Vec<Rule> {
+        let mut expanded_rules: Vec<Rule> = vec![];
+
+        if let Some(port_expansion) = self.src_port.get_expansion() {
+            let mut rule_clone: Rule = self.clone();
+            for port in port_expansion {
+                rule_clone.src_port = PortType::Port(port);
+                expanded_rules.push(rule_clone.clone());
+            }
+        } else if let Some(port_expansion) = self.dst_port.get_expansion() {
+            let mut rule_clone: Rule = self.clone();
+            for port in port_expansion {
+                rule_clone.dst_port = PortType::Port(port);
+                expanded_rules.push(rule_clone.clone());
+            }
+        } else {
+            expanded_rules.push(self.clone());
+        }
+
+        expanded_rules
+    }
+}
+
+impl FromStr for Rule {
+    type Err = (FieldError, Location);
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split_whitespace().collect();
+
+        if parts.len() != 6 {
+            return Err((
+                FieldError::RuleLengthErr,
+                Location::new(String::new(), 0, s.len() + 1),
+            ));
+        }
+
+        if parts[3].contains(',') && parts[5].contains(',') {
+            return Err((
+                FieldError::RuleExpansionUnsupported,
+                Location::new(String::new(), 0, s.len() + 1),
+            ));
+        }
+
+        let mut columns: Vec<usize> = vec![];
+        for (i, c) in s.trim().char_indices() {
+            if c.is_whitespace() {
+                columns.push(i + 2);
+            }
+        }
+
+        let action: Action = match Action::from_str(parts[0]) {
+            Ok(action) => action,
+            Err(e) => return Err((e, Location::new(String::new(), 0, 0))),
+        };
+
+        let protocol: Protocol = match Protocol::from_str(parts[1]) {
+            Ok(protocol) => protocol,
+            Err(e) => return Err((e, Location::new(String::new(), 0, columns[0]))),
+        };
+
+        // placeholder for src_prefix
+
+        let src_port: PortType = match PortType::from_str(parts[3]) {
+            Ok(protocol) => protocol,
+            Err(e) => return Err((e, Location::new(String::new(), 0, columns[2]))),
+        };
+
+        // placeholder for dst_prefix
+
+        let dst_port: PortType = match PortType::from_str(parts[5]) {
+            Ok(protocol) => protocol,
+            Err(e) => return Err((e, Location::new(String::new(), 0, columns[4]))),
+        };
+
+        Ok(Rule {
+            action,
+            protocol,
+            src_prefix: String::from(parts[2]),
+            src_port,
+            dst_prefix: String::from(parts[4]),
+            dst_port,
+        })
+    }
+}
+
+impl fmt::Display for Rule {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} {} {} {} {} {}",
+            self.action,
+            self.protocol,
+            self.src_prefix,
+            self.src_port,
+            self.dst_prefix,
+            self.dst_port
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Serialize)]
+pub enum Action {
     Allow,
     Deny,
     AllowLog,
@@ -286,130 +450,6 @@ impl fmt::Display for PortType {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize)]
-pub struct Rule {
-    action: Action,
-    protocol: Protocol,
-    src_prefix: String,
-    src_port: PortType,
-    dst_prefix: String,
-    dst_port: PortType,
-}
-
-impl Rule {
-    pub fn expand(&self) -> Vec<Rule> {
-        let mut expanded_rules: Vec<Rule> = vec![];
-
-        if let Some(port_expansion) = self.src_port.get_expansion() {
-            let mut rule_clone: Rule = self.clone();
-            for port in port_expansion {
-                rule_clone.src_port = PortType::Port(port);
-                expanded_rules.push(rule_clone.clone());
-            }
-        } else if let Some(port_expansion) = self.dst_port.get_expansion() {
-            let mut rule_clone: Rule = self.clone();
-            for port in port_expansion {
-                rule_clone.dst_port = PortType::Port(port);
-                expanded_rules.push(rule_clone.clone());
-            }
-        } else {
-            expanded_rules.push(self.clone());
-        }
-
-        expanded_rules
-    }
-}
-
-impl FromStr for Rule {
-    type Err = (FieldError, Location);
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split_whitespace().collect();
-
-        if parts.len() != 6 {
-            return Err((
-                FieldError::RuleLengthErr,
-                Location::new(String::new(), 0, s.len() + 1),
-            ));
-        }
-
-        if parts[3].contains(',') && parts[5].contains(',') {
-            return Err((
-                FieldError::RuleExpansionUnsupported,
-                Location::new(String::new(), 0, s.len() + 1),
-            ));
-        }
-
-        let mut columns: Vec<usize> = vec![];
-        for (i, c) in s.trim().char_indices() {
-            if c.is_whitespace() {
-                columns.push(i + 2);
-            }
-        }
-
-        let action: Action = match Action::from_str(parts[0]) {
-            Ok(action) => action,
-            Err(e) => return Err((e, Location::new(String::new(), 0, 0))),
-        };
-
-        let protocol: Protocol = match Protocol::from_str(parts[1]) {
-            Ok(protocol) => protocol,
-            Err(e) => return Err((e, Location::new(String::new(), 0, columns[0]))),
-        };
-
-        // placeholder for src_prefix
-
-        let src_port: PortType = match PortType::from_str(parts[3]) {
-            Ok(protocol) => protocol,
-            Err(e) => return Err((e, Location::new(String::new(), 0, columns[2]))),
-        };
-
-        // placeholder for dst_prefix
-
-        let dst_port: PortType = match PortType::from_str(parts[5]) {
-            Ok(protocol) => protocol,
-            Err(e) => return Err((e, Location::new(String::new(), 0, columns[4]))),
-        };
-
-        Ok(Rule {
-            action,
-            protocol,
-            src_prefix: String::from(parts[2]),
-            src_port,
-            dst_prefix: String::from(parts[4]),
-            dst_port,
-        })
-    }
-}
-
-impl fmt::Display for Rule {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{} {} {} {} {} {}",
-            self.action,
-            self.protocol,
-            self.src_prefix,
-            self.src_port,
-            self.dst_prefix,
-            self.dst_port
-        )
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Location {
-    pub path: String,
-    pub line: usize,
-    pub column: usize,
-}
-
-impl Location {
-    fn new(path: String, line: usize, column: usize) -> Self {
-        Location { path, line, column }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct RuleErrors(Vec<(FieldError, Location)>);
 
@@ -479,76 +519,32 @@ impl Error for RuleErrors {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize)]
-pub struct Ruleset(Vec<Rule>);
-
-impl Ruleset {
-    pub fn new(acls_path: &str, dbg: LogLevel) -> Result<Self, Box<dyn std::error::Error>> {
-        verb!(dbg, "  Loading ruleset file: {}", acls_path);
-        let rs_file: &Vec<String> = &fs::read_to_string(PathBuf::from(acls_path))?
-            .lines()
-            .map(String::from)
-            .collect();
-
-        let rs: Ruleset = match Self::from_vec(rs_file) {
-            Ok(ruleset) => ruleset,
-            Err(mut e) => {
-                e.update_paths(acls_path);
-                return Err(Box::new(e));
-            }
-        };
-        verb!(dbg, "  Ruleset file loaded successfully from yaml.");
-
-        Ok(rs.expand())
-    }
-
-    pub fn push(&mut self, rule: Rule) {
-        self.0.push(rule);
-    }
-
-    /// parses rules from vec of strings to validated rules that may require expansion
-    fn from_vec(raw_rules: &Vec<String>) -> Result<Self, RuleErrors> {
-        let mut ruleset: Ruleset = Ruleset(Vec::new());
-        let mut errors: RuleErrors = RuleErrors::new();
-
-        for (i, rule) in raw_rules.iter().enumerate() {
-            match Rule::from_str(rule) {
-                Ok(r) => ruleset.push(r),
-                Err((e, mut loc)) => {
-                    loc.line = i + 1;
-                    errors.push(e, loc)
-                }
-            };
-        }
-
-        if errors.len() > 0 {
-            return Err(errors);
-        }
-
-        Ok(ruleset)
-    }
-
-    fn expand(self) -> Self {
-        Ruleset(self.into_iter().flat_map(|rule| rule.expand()).collect())
-    }
+#[derive(Debug, Error, PartialEq, Clone)]
+pub enum FieldError {
+    #[error("ActionInvalid: expected 'allow', 'deny', 'allowlog', or 'denylog'")]
+    ActionInvalid,
+    #[error("ProtocolUnsupported: expected 'ip', 'tcp', 'udp', or 'icmp'")]
+    ProtocolUnsupported,
+    #[error("PortInvalid: expected a port (0-65535), range of ports, comma-separated list of ports, or 'any'")]
+    PortInvalid,
+    #[error("PortOrderInvalid: port range start must be less than port range end")]
+    PortOrderInvalid,
+    #[error("RuleLengthErr: expected 6 fields")]
+    RuleLengthErr,
+    #[error("RuleExpansionUnsupported: both src & dst ports cannot be port lists")]
+    RuleExpansionUnsupported,
 }
 
-impl IntoIterator for Ruleset {
-    type Item = Rule;
-    type IntoIter = IntoIter<Rule>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
+#[derive(Debug, PartialEq, Clone)]
+pub struct Location {
+    pub path: String,
+    pub line: usize,
+    pub column: usize,
 }
 
-impl fmt::Display for Ruleset {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Ruleset(")?;
-        for rule in &self.0 {
-            writeln!(f, "  {}", rule)?;
-        }
-        write!(f, ")")
+impl Location {
+    fn new(path: String, line: usize, column: usize) -> Self {
+        Location { path, line, column }
     }
 }
 

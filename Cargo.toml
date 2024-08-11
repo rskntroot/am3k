@@ -3,7 +3,13 @@ name = "am3k"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+opt-level = 3
+lto = true
+panic ='abort'
+
 [dependencies]
+clap = { version = "4.5.11" }
 regex = "1.10.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_yml = "0.0.10"

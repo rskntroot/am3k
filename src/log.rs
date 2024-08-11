@@ -23,6 +23,12 @@ impl LogLevel {
     }
 }
 
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[macro_export]
 macro_rules! info {
     ($current_level:expr, $($msg:expr),*) => {
